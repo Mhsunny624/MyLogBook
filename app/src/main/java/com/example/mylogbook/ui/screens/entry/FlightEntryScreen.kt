@@ -445,7 +445,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                                 FlightNumberField(
                                                     value = sector.flightNo,
                                                     onValueChange = { sectors[index] = sector.copy(flightNo = it) },
-                                                    modifier = Modifier.weight(1.15f)
+                                                    modifier = Modifier.weight(1.6f)
                                                 )
                                                 if (index == 0) {
                                                     AirportAutoCompleteTextField(label = "From", value = sector.departure, isError = false, onValueChange = { sectors[index] = sector.copy(departure = it) }, modifier = Modifier.weight(1f))
@@ -461,16 +461,16 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                                     modifier = Modifier.weight(1f)
                                                 )
                                             }
+                                            if (index == 0) {
+                                                // Scheduled departure of the first sector: used to calculate Duty On.
+                                                CompactTimeField("Scheduled departure time", sector.schedDep, { c -> sectors[index] = sector.copy(schedDep = c) }, Modifier.fillMaxWidth()) { focusManager.moveFocus(FocusDirection.Next) }
+                                            }
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                if (index == 0) {
-                                                    // Scheduled departure of the first sector: used to calculate Duty On.
-                                                    CompactTimeField("Sched", sector.schedDep, { c -> sectors[index] = sector.copy(schedDep = c) }, Modifier.weight(1f)) { focusManager.moveFocus(FocusDirection.Next) }
-                                                }
-                                                CompactTimeField("Off", sector.blockOff, { c ->
+                                                CompactTimeField("Block off", sector.blockOff, { c ->
                                                     sectors[index] = sector.copy(blockOff = c)
                                                     updateAutoBlockTime(c, sector.blockOn, index)
                                                 }, Modifier.weight(1f)) { focusManager.moveFocus(FocusDirection.Next) }
-                                                CompactTimeField("On", sector.blockOn, { c ->
+                                                CompactTimeField("Block on", sector.blockOn, { c ->
                                                     sectors[index] = sector.copy(blockOn = c)
                                                     updateAutoBlockTime(sector.blockOff, c, index)
                                                 }, Modifier.weight(1f)) { focusManager.moveFocus(FocusDirection.Next) }
@@ -484,7 +484,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                                 )
                                             } else {
                                                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                                    Text("No Off/On times? Enter block time", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.weight(1f))
+                                                    Text("No block off/on? Enter block time", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.weight(1f))
                                                     CompactTimeField("Block", sector.totalBlock, { c -> sectors[index] = sector.copy(totalBlock = c) }, Modifier.width(110.dp))
                                                 }
                                             }

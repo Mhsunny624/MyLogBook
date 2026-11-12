@@ -88,7 +88,7 @@ internal fun FlightNumberField(value: String, onValueChange: (String) -> Unit, m
                 }
             )
         },
-        label = { Text("Flight", maxLines = 1) },
+        label = { Text("Flight number", maxLines = 1) },
         prefix = if (isBiman) {
             { Text("BG", fontWeight = FontWeight.SemiBold) }
         } else null,
