@@ -1,5 +1,5 @@
 /*
- * Logbook tab: "Entries" list grouped by day and the "Summary" view (month / year totals,
+ * Logbook tab: "Entries" list grouped by day and the "$৳ Allowances" view (internally "Summary") (month / year totals,
  * grounded days and pay estimates).
  */
 package com.example.mylogbook.ui.screens.logbook
@@ -294,7 +294,7 @@ fun LogbookScreen(
             Tab(
                 selected = pagerState.currentPage == 1,
                 onClick = { coroutineScope.launch { pagerState.animateScrollToPage(1) } },
-                text = { Text("Summary", fontWeight = FontWeight.Bold) }
+                text = { Text("$৳ Allowances", fontWeight = FontWeight.Bold) }
             )
         }
 

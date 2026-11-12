@@ -19,7 +19,7 @@ Everything is stored on the phone. There's no server and no account.
 | Tab | What it does |
 |---|---|
 | **Logbook → Entries** | Days grouped by date: sectors, block and duty times, rest requirements, non-flight records. Tap to edit; delete asks for confirmation. |
-| **Logbook → Summary** | Month or year totals (block, duty, flights, training, sick, grounded days) and, in month view, the USD and Taka estimates. |
+| **Logbook → $৳ Allowances** | Month or year totals (block, duty, flights, training, sick, grounded days) and, in month view, the USD and Taka estimates. |
 | **Records** | Training and health card records with time remaining until expiry. |
 | **Calculator** | All UTC. *Add / Subtract*: sums durations with a +/− per row (hours above 99 allowed), quick-add chips for duty buffers, result in h:mm and decimal hours with copy. *Between times*: duration between two clock times, crossing midnight. |
 | **Settings** | Theme, profile, pay settings, JSON backup/restore (manual and automatic), monthly PDF report. |
