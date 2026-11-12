@@ -24,3 +24,25 @@ class TimeVisualTransformation : VisualTransformation {
         return TransformedText(AnnotatedString(output), offsetMapping)
     }
 }
+
+/**
+ * Shows typed duration digits with a colon before the last two (minutes): "7721" -> "77:21",
+ * "12030" -> "120:30". Unlike [TimeVisualTransformation], hours can have any number of digits.
+ */
+class DurationVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val raw = text.text
+        val n = raw.length
+        if (n <= 2) return TransformedText(text, OffsetMapping.Identity)
+        val out = raw.substring(0, n - 2) + ":" + raw.substring(n - 2)
+        val mapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = if (offset <= n - 2) offset else offset + 1
+            override fun transformedToOriginal(offset: Int): Int = when {
+                offset <= n - 2 -> offset
+                offset == n - 1 -> n - 2
+                else -> (offset - 1).coerceAtMost(n)
+            }
+        }
+        return TransformedText(AnnotatedString(out), mapping)
+    }
+}

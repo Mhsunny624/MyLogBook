@@ -100,3 +100,33 @@ fun formatWithColon(timeStr: String): String {
     }
     return timeStr
 }
+
+/**
+ * Duration typed as digits where the last two are minutes: "7721" -> 77:21, "12030" -> 120:30,
+ * "45" -> 0:45. Returns total minutes, or null if empty or the minutes part is above 59.
+ */
+fun durationMinutes(digits: String): Int? {
+    val d = digits.filter { it.isDigit() }
+    if (d.isEmpty()) return null
+    val mins = d.takeLast(2).toInt()
+    val hours = if (d.length > 2) d.dropLast(2).toInt() else 0
+    if (mins > 59) return null
+    return hours * 60 + mins
+}
+
+/** Minutes as h:mm, with a leading "-" when negative: 4641 -> "77:21", -90 -> "-1:30". */
+fun formatDuration(totalMins: Int): String {
+    val sign = if (totalMins < 0) "-" else ""
+    val m = kotlin.math.abs(totalMins)
+    return String.format(Locale.US, "%s%d:%02d", sign, m / 60, m % 60)
+}
+
+/** Minutes as decimal hours with two places: 4641 -> "77.35". */
+fun decimalHoursText(totalMins: Int): String = String.format(Locale.US, "%.2f", totalMins / 60.0)
+
+/** Minutes from one UTC clock time to the next ("HHmm"), crossing midnight if needed: 2330 -> 0415 = 285. */
+fun clockDifferenceMinutes(start: String, end: String): Int? {
+    if (!isValidTime(start) || !isValidTime(end) || start.length != 4 || end.length != 4) return null
+    val diff = getMinsFromTimeString(end) - getMinsFromTimeString(start)
+    return if (diff < 0) diff + 24 * 60 else diff
+}
