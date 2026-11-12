@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("FlightLogPrefs", MODE_PRIVATE)
+        com.example.mylogbook.domain.pay.migratePayPrefs(prefs)
 
         // 1. Ask for Notification Permission (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

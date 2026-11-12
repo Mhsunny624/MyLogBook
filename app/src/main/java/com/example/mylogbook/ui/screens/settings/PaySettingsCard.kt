@@ -143,7 +143,7 @@ fun PaySettingsCard(prefs: SharedPreferences) {
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PayField(fields, "pay_flying_tk_hr", "Flying Tk/hour")
-                    PayField(fields, "pay_round_step", "Round USD up to")
+                    PayField(fields, "pay_round_step", "Round USD up to (0 = off)")
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PayField(fields, "pay_hr_pct", "House rent %")

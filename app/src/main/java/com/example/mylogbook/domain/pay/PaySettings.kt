@@ -19,7 +19,7 @@ val PAY_DEFAULTS: Map<String, String> = linkedMapOf(
     "pay_oa_hourly" to "",    // blank = Biman rate by crew type / service length
     "pay_min_hours" to "70",
     "pay_incidental_day" to "12",
-    "pay_round_step" to "5",
+    "pay_round_step" to "0",   // 0 = no rounding (rule to be confirmed from latest documents)
     "pay_flying_tk_hr" to "160",
     "pay_hr_pct" to "55",
     "pay_special_pct" to "15",
@@ -101,4 +101,16 @@ fun serviceYears(joiningDate: String, year: Int, month0: Int): Int? {
     val jm = join.get(Calendar.MONTH)
     if (month0 < jm || (month0 == jm && lastDay < join.get(Calendar.DAY_OF_MONTH))) years--
     return max(0, years)
+}
+
+/**
+ * One-time fix for installs that saved the old default rounding step of 5: rounding is off until
+ * the rule is confirmed. Runs once (flag "pay_round_reset_v1"); a value the user sets later is kept.
+ */
+fun migratePayPrefs(prefs: SharedPreferences) {
+    if (prefs.getBoolean("pay_round_reset_v1", false)) return
+    prefs.edit {
+        if (prefs.getString("pay_round_step", null) == "5") putString("pay_round_step", "0")
+        putBoolean("pay_round_reset_v1", true)
+    }
 }

@@ -63,7 +63,7 @@ Monthly block and duty totals use Bangladesh time. A sector flown across midnigh
 
 ## 7. USD statement total
 
-Total = overseas allowance for the month + incidental earned in the previous month. The total is **rounded up to the next USD 5**.
+Total = overseas allowance for the month + incidental earned in the previous month. **No rounding is applied for now.** Past statements fit rounding to the nearest USD 5, but this is to be confirmed from the latest documents. A rounding step can be set in Pay Settings (0 = off).
 
 ## 8. Taka payslip (`domain/pay/TakaPayroll.kt`)
 

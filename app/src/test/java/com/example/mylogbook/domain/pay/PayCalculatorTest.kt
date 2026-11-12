@@ -77,7 +77,7 @@ class PayCalculatorTest {
         assertEquals(1605.0, usd.overseas, 0.001)      // 1500 + 5 x 21
         assertEquals(17.0, usd.previousIncidental.usd, 0.001)
         assertEquals(1622.0, usd.total, 0.001)
-        assertEquals(1625.0, usd.rounded, 0.001)       // next USD 5
+        assertEquals(1622.0, usd.rounded, 0.001)       // no rounding by default
     }
 
     @Test
@@ -85,7 +85,7 @@ class PayCalculatorTest {
         val usd = estimateUsd(logs, "DAC", 2030, 4, 60 * 60 + 30, rates())
         assertEquals(1300.5, usd.overseas, 0.001)      // 1500 - 9.5 x 21
         assertEquals(1309.5, usd.total, 0.001)         // + April incidental 9.00
-        assertEquals(1310.0, usd.rounded, 0.001)
+        assertEquals(1309.5, usd.rounded, 0.001)
     }
 
     @Test
