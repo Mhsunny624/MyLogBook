@@ -129,7 +129,7 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
                                 if (log.arrival.isNotBlank()) routeParts.add(log.arrival)
                             }
                         }
-                        val mergedRoute = routeParts.joinToString("-")
+                        val mergedRoute = routeParts.joinToString(" → ")
 
                         Text(
                             text = "$displayDate • $mergedRoute",
@@ -224,6 +224,9 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
                             ) {
                                 Text(if (isRestExpanded) "▲" else "▼", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                             }
+                        } else {
+                            // Keep the same width so block times line up in one column on every card.
+                            Spacer(modifier = Modifier.size(28.dp))
                         }
 
                         var showDeleteConfirm by remember { mutableStateOf(false) }
