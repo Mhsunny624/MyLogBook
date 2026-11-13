@@ -1,5 +1,5 @@
 /*
- * USD and Taka pay estimate cards on the Summary tab (month view).
+ * USD and Taka pay estimate cards on the $৳ Allowances tab (month view).
  */
 package com.example.mylogbook.ui.components
 
@@ -50,7 +50,7 @@ private fun hm(mins: Long) = String.format(Locale.US, "%d:%02d", mins / 60, mins
 private fun plain(v: Double) = if (v % 1.0 == 0.0) String.format(Locale.US, "%,.0f", v) else String.format(Locale.US, "%,.2f", v)
 
 /**
- * Pay estimates shown at the top of the Summary tab for one month.
+ * Pay estimates shown at the top of the $৳ Allowances tab for one month.
  * [flyMins] = that month's block minutes, already split at month ends (Bangladesh time).
  */
 @Composable

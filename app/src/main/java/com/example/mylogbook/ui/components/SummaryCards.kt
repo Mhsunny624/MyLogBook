@@ -1,5 +1,5 @@
 /*
- * Small cards used on the Summary tab.
+ * Small cards used on the $৳ Allowances tab.
  */
 package com.example.mylogbook.ui.components
 

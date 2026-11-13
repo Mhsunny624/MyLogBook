@@ -50,7 +50,7 @@ import com.example.mylogbook.domain.pay.payRatesFrom
 import java.util.Calendar
 import java.util.Locale
 
-/** Settings card for the pay estimates shown on the Summary tab. */
+/** Settings card for the pay estimates shown on the $৳ Allowances tab. */
 @Composable
 fun PaySettingsCard(prefs: SharedPreferences) {
     val context = LocalContext.current
@@ -71,7 +71,7 @@ fun PaySettingsCard(prefs: SharedPreferences) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Pay Settings", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text(
-                "Used for the USD and Taka estimates on the Summary tab.",
+                "Used for the USD and Taka estimates on the $৳ Allowances tab.",
                 fontSize = 12.sp, color = Color.Gray
             )
 
