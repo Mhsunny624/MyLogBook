@@ -453,9 +453,6 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                                 val route = if (sector.departure.isNotBlank() || sector.arrival.isNotBlank())
                                                     " · ${sector.departure.ifBlank { "---" }} → ${sector.arrival.ifBlank { "---" }}" else ""
                                                 Text("Sector ${index + 1}$route", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.weight(1f), maxLines = 1)
-                                                if (blockFromTimes) {
-                                                    Text("Block time ${formatWithColon(sector.totalBlock)}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                                                }
                                                 if (sectors.size > 1) {
                                                     IconButton(onClick = { sectors.removeAt(index) }, modifier = Modifier.size(28.dp)) {
                                                         Icon(Icons.Default.Delete, contentDescription = "Remove sector", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f))
@@ -485,7 +482,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                                 if (index == 0) {
                                                     // Scheduled departure of the first sector: used to calculate Duty On.
-                                                    CompactTimeField("Sched. departure", sector.schedDep, { c -> sectors[index] = sector.copy(schedDep = c) }, Modifier.weight(1.15f)) { focusManager.moveFocus(FocusDirection.Next) }
+                                                    CompactTimeField("Sched Dep", sector.schedDep, { c -> sectors[index] = sector.copy(schedDep = c) }, Modifier.weight(1.25f)) { focusManager.moveFocus(FocusDirection.Next) }
                                                 }
                                                 CompactTimeField("Block off", sector.blockOff, { c ->
                                                     sectors[index] = sector.copy(blockOff = c)
@@ -496,7 +493,14 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                                     updateAutoBlockTime(sector.blockOff, c, index)
                                                 }, Modifier.weight(1f)) { focusManager.moveFocus(FocusDirection.Next) }
                                             }
-                                            if (!blockFromTimes) {
+                                            if (blockFromTimes) {
+                                                // Right-aligned, so it sits under the Block on box.
+                                                Text(
+                                                    "Block time ${formatWithColon(sector.totalBlock)}",
+                                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.align(Alignment.End).padding(end = 4.dp)
+                                                )
+                                            } else {
                                                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                                     Text("No block off/on? Enter block time", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.weight(1f))
                                                     CompactTimeField("Block time", sector.totalBlock, { c -> sectors[index] = sector.copy(totalBlock = c) }, Modifier.width(110.dp))
