@@ -5,6 +5,7 @@
 package com.example.mylogbook.domain.pay
 
 import com.example.mylogbook.data.FlightLog
+import com.example.mylogbook.domain.duty.dutyOnInstant
 import com.example.mylogbook.domain.duty.getMinsFromTimeString
 import com.example.mylogbook.domain.duty.isValidTime
 
@@ -48,7 +49,7 @@ private fun sectorTimes(logs: List<FlightLog>, homeBase: String): List<SectorTim
     val result = mutableListOf<SectorTimes>()
     for ((day, group) in days) {
         val dutyLog = group.firstOrNull { validHhmm(it.dutyOn) }
-        val dutyOnAt = dutyLog?.let { day + getMinsFromTimeString(it.dutyOn) * MIN_MS }
+        val dutyOnAt = dutyLog?.let { dutyOnInstant(day, it.dutyOn, group.first()) }
         val dutyMins = dutyLog?.let { getMinsFromTimeString(it.totalDuty) } ?: 0
         val dutyOffAt = if (dutyOnAt != null && dutyMins > 0) dutyOnAt + dutyMins * MIN_MS else null
 

@@ -208,6 +208,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
             dutyOnTime = ""; dutyOffTime = ""; totalDutyTime = ""
             flightDate = ""; aircraftReg = "S2-"; logbookNumber = ""; notes = ""; crewNames = ""
             healthMode = "Health Card"; groundReason = ""
+            trainingType = ""; expiryDate = ""; endDate = ""; dutyType = "Operating"
         }
         dateError = false
     }
@@ -222,19 +223,30 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
         if (calculated != null) sectors[index] = sectors[index].copy(totalBlock = calculated)
     }
 
-    val calendar = Calendar.getInstance()
+    // Date pickers open on the date already in the field (today when empty).
+    fun pickerStart(value: String, fallback: String = ""): Triple<Int, Int, Int> {
+        val cal = Calendar.getInstance()
+        val text = value.ifBlank { fallback }
+        try { SimpleDateFormat("dd/MM/yyyy", Locale.US).parse(text)?.let { cal.time = it } } catch (_: Exception) {}
+        return Triple(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH))
+    }
+    fun formatPicked(y: Int, m: Int, d: Int) = String.format("%02d/%02d/%04d", d, m + 1, y)
+
+    val (fy, fm, fd) = pickerStart(flightDate)
     val datePickerDialog = DatePickerDialog(context, { _: DatePicker, y: Int, m: Int, d: Int ->
-        flightDate = String.format("%02d/%02d/%04d", d, m + 1, y)
+        flightDate = formatPicked(y, m, d)
         dateError = false
-    }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
+    }, fy, fm, fd)
 
+    val (ey, em, ed) = pickerStart(expiryDate, flightDate)
     val expiryPickerDialog = DatePickerDialog(context, { _: DatePicker, y: Int, m: Int, d: Int ->
-        expiryDate = String.format("%02d/%02d/%04d", d, m + 1, y)
-    }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
+        expiryDate = formatPicked(y, m, d)
+    }, ey, em, ed)
 
+    val (ny, nm, nd) = pickerStart(endDate, flightDate)
     val endDatePickerDialog = DatePickerDialog(context, { _: DatePicker, y: Int, m: Int, d: Int ->
-        endDate = String.format("%02d/%02d/%04d", d, m + 1, y)
-    }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
+        endDate = formatPicked(y, m, d)
+    }, ny, nm, nd)
 
     val actualCurrentPage = pagerState.currentPage % tabs.size
 
@@ -652,22 +664,17 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                     }
                 }
 
-                val groundedRangeBad = saveGrounded && endDate.isNotBlank() && flightDate.isNotBlank() && run {
+                val groundedRangeBad = (saveGrounded || activeRecordType == "Training") && endDate.isNotBlank() && flightDate.isNotBlank() && run {
                     val sdfG = SimpleDateFormat("dd/MM/yyyy", Locale.US)
                     try { sdfG.parse(endDate)!!.before(sdfG.parse(flightDate)) } catch (_: Exception) { false }
                 }
                 if (hasError) {
                     Toast.makeText(context, "Please complete required fields for all sectors", Toast.LENGTH_SHORT).show()
                 } else if (groundedRangeBad) {
-                    Toast.makeText(context, "\"Until\" date cannot be before the \"Grounded from\" date", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, if (saveGrounded) "\"Until\" date cannot be before the \"Grounded from\" date" else "End date cannot be before the start date", Toast.LENGTH_LONG).show()
                 } else if (activeRecordType == "Flight" && dutyType != "Day Off" && (!isValidTime(dutyOnTime) || !isValidTime(dutyOffTime))) {
                     Toast.makeText(context, "Times must be valid 4-digit HHMM", Toast.LENGTH_LONG).show()
                 } else {
-                    val originalIds = vm.logsBeingEdited?.map { it.id } ?: emptyList()
-                    val currentIds = sectors.map { it.id }.filter { it != 0 }
-                    val idsToDelete = originalIds - currentIds.toSet()
-                    vm.logsBeingEdited?.filter { it.id in idsToDelete }?.forEach { vm.deleteLog(it) }
-
                     var calculatedTrainingDuty = ""
                     var finalEndDate = endDate
                     if (activeRecordType == "Training") {
@@ -687,8 +694,11 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                         }
                     }
 
-                    sectors.forEachIndexed { index, sec ->
-                        if (activeRecordType == "Flight" && dutyType == "Day Off" && index > 0) return@forEachIndexed
+                    // A flying day saves one record per sector; everything else (incl. Day Off) is one record.
+                    val isFlyingDay = activeRecordType == "Flight" && dutyType != "Day Off"
+                    val sectorsToSave = if (isFlyingDay) sectors.toList() else sectors.take(1)
+                    val toSave = mutableListOf<FlightLog>()
+                    sectorsToSave.forEachIndexed { index, sec ->
 
                         val savedRecordType = if (activeRecordType == "Flight" && dutyType == "Day Off") "Day Off" else activeRecordType
                         val savedFlightNo = if (activeRecordType == "Flight" && dutyType == "Day Off") "DAY OFF" else if (activeRecordType == "Flight") sec.flightNo else ""
@@ -712,11 +722,18 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                             blockOn = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.blockOn else "",
                             totalBlock = if (activeRecordType == "Flight" && dutyType != "Day Off") normalizeTimeStr(sec.totalBlock) else "",
                             crewNames = if (activeRecordType == "Flight" && dutyType != "Day Off") crewNames else "",
-                            notes = if (sectors.size > 1 && dutyType != "Day Off") notes + " (Sector ${index + 1} of ${sectors.size})" else notes,
+                            notes = if (isFlyingDay && sectorsToSave.size > 1) "$notes (Sector ${index + 1} of ${sectorsToSave.size})".trim() else notes.trim(),
                             schedDep = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") sec.schedDep else ""
                         )
-                        vm.saveLog(newLog)
+                        toSave += newLog
                     }
+
+                    // Records of the original entry that are no longer part of it (removed sectors,
+                    // or extra sectors when a flying day becomes a Day Off / another record type).
+                    val keptIds = toSave.map { it.id }.filter { it != 0 }.toSet()
+                    val deleteIds = vm.logsBeingEdited.orEmpty().map { it.id }.filter { it !in keptIds }
+                    vm.saveEntries(toSave, deleteIds)
+
 
                     Toast.makeText(context, if (vm.logsBeingEdited != null) "Updated!" else "Saved!", Toast.LENGTH_SHORT).show()
                     vm.logsBeingEdited = null

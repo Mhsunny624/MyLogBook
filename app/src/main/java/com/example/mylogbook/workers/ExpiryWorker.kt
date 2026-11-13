@@ -1,6 +1,6 @@
 /*
  * Daily WorkManager job that notifies about training / health card expiries (30 days before,
- * then every day from 7 days to 0). Keep this class name and package: WorkManager stores it.
+ * then every day from 7 days to 0) and the end of sick leave (the day before and the day itself). Keep this class name and package: WorkManager stores it.
  */
 package com.example.mylogbook.workers
 
@@ -15,6 +15,7 @@ import com.example.mylogbook.R
 import com.example.mylogbook.data.AppDatabase
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -25,31 +26,29 @@ class ExpiryWorker(appContext: Context, workerParams: WorkerParameters) :
         val dao = AppDatabase.getDatabase(applicationContext).flightLogDao()
         val records = dao.getExpiringRecords()
 
-        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.US)
-        val today = Date()
+        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.US).apply { isLenient = false }
+        val today = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
 
         records.forEach { record ->
-            if (record.expiryDate.isNotBlank()) {
-                try {
-                    val expDate = sdf.parse(record.expiryDate)
-                    if (expDate != null) {
-                        val diffMillis = expDate.time - today.time
-                        val diffDays = TimeUnit.MILLISECONDS.toDays(diffMillis)
+            if (record.expiryDate.isBlank()) return@forEach
+            val expDate = try { sdf.parse(record.expiryDate) } catch (_: Exception) { null } ?: return@forEach
+            // Whole calendar days from today to the expiry date (both at local midnight).
+            val days = Math.round((expDate.time - today.timeInMillis) / 86_400_000.0).toInt()
 
-                        // Trigger notifications exactly at 30 days, 7 days, and 1 day remaining
-                        // Trigger a heads-up at 30 days, then EVERY day from 7 days down to 0
-                        if (diffDays == 30L || diffDays in 0L..7L) {
-                            val title = if (record.recordType == "Training") "Training Expiring Soon!" else "Health Card Expiring!"
-                            val name = if (record.recordType == "Training") record.trainingType else "Health Card"
-                            val message = "Your $name expires in $diffDays days (${record.expiryDate})."
-
-                            showNotification(record.id, title, message)
-                        }
-                    }
-                } catch (_: Exception) {
-                    // Ignore parsing errors for empty/invalid dates
+            // A heads-up at 30 days, then every day from 7 days down to the day itself.
+            if (days != 30 && days !in 0..7) return@forEach
+            val whenText = when (days) { 0 -> "today"; 1 -> "tomorrow"; else -> "in $days days" }
+            val (title, message) = when (record.recordType) {
+                "Training" -> "Training expiring" to "Your ${record.trainingType.ifBlank { "training" }} expires $whenText (${record.expiryDate})."
+                "Sick" -> {
+                    if (days > 1) return@forEach   // only remind the day before and on the day
+                    "Sick leave ending" to "You are cleared for duty $whenText (${record.expiryDate})."
                 }
+                else -> "Health card expiring" to "Your health card expires $whenText (${record.expiryDate})."
             }
+            showNotification(record.id, title, message)
         }
         return Result.success()
     }

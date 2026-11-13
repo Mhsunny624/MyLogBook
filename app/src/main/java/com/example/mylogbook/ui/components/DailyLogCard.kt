@@ -27,7 +27,9 @@ import com.example.mylogbook.data.FlightLog
 import com.example.mylogbook.domain.duty.calculateClaimOffForDay
 import com.example.mylogbook.domain.duty.calculateShortRest
 import com.example.mylogbook.domain.duty.getMinsFromTimeString
+import com.example.mylogbook.domain.duty.blockOffInstants
 import com.example.mylogbook.domain.duty.getRemainingTimeText
+import com.example.mylogbook.domain.duty.isClockTime
 import com.example.mylogbook.domain.pay.groundedSpan
 import com.example.mylogbook.viewmodel.FlightLogViewModel
 import java.text.SimpleDateFormat
@@ -52,18 +54,14 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
     val baseMonthsList = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
     val monthMinsMap = mutableMapOf<String, Int>()
 
+    val blockStarts = remember(flightLogs) { blockOffInstants(flightLogs) }
     flightLogs.forEach { log ->
         val durMinsBlock = getMinsFromTimeString(log.totalBlock)
         dailyBlockMins += durMinsBlock
 
-        val depDate = try { sdfUtc.parse(log.flightDate) } catch (_: Exception) { null }
-        if (depDate != null && log.blockOff.isNotBlank() && durMinsBlock > 0) {
-            val offMins = getMinsFromTimeString(log.blockOff)
-
-            val calDepBd = Calendar.getInstance(bstZone).apply {
-                timeInMillis = depDate.time
-                add(Calendar.MINUTE, offMins)
-            }
+        val start = blockStarts[log.id]
+        if (start != null && isClockTime(log.blockOff) && durMinsBlock > 0) {
+            val calDepBd = Calendar.getInstance(bstZone).apply { timeInMillis = start }
             val calArrBd = Calendar.getInstance(bstZone).apply {
                 timeInMillis = calDepBd.timeInMillis
                 add(Calendar.MINUTE, durMinsBlock)
@@ -105,7 +103,8 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable {
-                vm.logsBeingEdited = dailyLogs
+                // Edit the day's flight sectors; a non-flight record has its own row click below.
+                vm.logsBeingEdited = flightLogs.ifEmpty { otherLogs.take(1) }
                 onEditClicked()
             },
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -248,7 +247,7 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
                                 text = { Text("This will permanently delete this flight log entry.") },
                                 confirmButton = {
                                     TextButton(onClick = {
-                                        flightLogs.forEach { vm.deleteLog(it) }
+                                        vm.deleteLogs(flightLogs)
                                         showDeleteConfirm = false
                                     }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
                                 },
@@ -277,7 +276,10 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
                 }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        vm.logsBeingEdited = listOf(log)
+                        onEditClicked()
+                    },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val logTitle = when (log.recordType) {

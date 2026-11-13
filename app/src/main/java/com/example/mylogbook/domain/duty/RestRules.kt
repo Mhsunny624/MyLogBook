@@ -64,8 +64,9 @@ fun calculateClaimOffForDay(dailyLogs: List<FlightLog>, allLogs: List<FlightLog>
     val startDate = try { sdfDateOnly.parse(startFlight.flightDate) } catch(_:Exception){ null }
     val endDate = try { sdfDateOnly.parse(dutySourceLog.flightDate) } catch(_:Exception){ null }
 
-    val sdfUtc = SimpleDateFormat("dd/MM/yyyy HHmm", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-    val dutyOnDate = try { sdfUtc.parse("${dutySourceLog.flightDate} $dutyOnStr") } catch(_:Exception){ null }
+    val dutyOnDate = dayStartUtc(dutySourceLog.flightDate)
+        ?.let { day -> dutyOnInstant(day, dutyOnStr, flightSectors.first()) }
+        ?.let { Date(it) }
 
     val totalDutyStr = dutySourceLog.totalDuty.filter { it.isDigit() }
     val dutyMins = if (totalDutyStr.isNotBlank()) getMinsFromTimeString(totalDutyStr) else 0
@@ -120,10 +121,8 @@ fun calculateShortRest(flightLogs: List<FlightLog>): ShortRestInfo? {
     val shortRestDurationMins = dutyMins * 2
 
     try {
-        val sdfUtc = SimpleDateFormat("dd/MM/yyyy HHmm", Locale.US).apply {
-            timeZone = java.util.TimeZone.getTimeZone("UTC")
-        }
-        val dutyOnDate = sdfUtc.parse("$flightDateStr $dutyOnStr") ?: return null
+        val day = dayStartUtc(flightDateStr) ?: return null
+        val dutyOnDate = Date(dutyOnInstant(day, dutyOnStr, flightSectors.first()) ?: return null)
         val trueDutyOffDate = Date(dutyOnDate.time + (dutyMins * 60L * 1000L))
         val shortRestEndDate = Date(trueDutyOffDate.time + (shortRestDurationMins * 60L * 1000L))
 
@@ -131,7 +130,7 @@ fun calculateShortRest(flightLogs: List<FlightLog>): ShortRestInfo? {
         val durMins = shortRestDurationMins % 60
         val durationText = String.format("%d hrs %02d mins", durHrs, durMins)
 
-        val sdfLocal = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).apply {
+        val sdfLocal = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("Asia/Dhaka")
         }
         val endTimeLocalText = sdfLocal.format(shortRestEndDate)

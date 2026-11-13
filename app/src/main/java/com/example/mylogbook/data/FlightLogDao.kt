@@ -11,6 +11,10 @@ interface FlightLogDao {
     @Query("SELECT * FROM flight_logs ORDER BY createdAt DESC")
     fun getAllLogs(): Flow<List<FlightLog>>
 
+    /** Snapshot of every entry in insertion order (id ascending); used for backups. */
+    @Query("SELECT * FROM flight_logs ORDER BY id ASC")
+    suspend fun getAllLogsOnce(): List<FlightLog>
+
     @Query("SELECT * FROM flight_logs WHERE recordType IN ('Training', 'Health Card', 'Sick')")
     suspend fun getExpiringRecords(): List<FlightLog>
 
@@ -19,4 +23,10 @@ interface FlightLogDao {
 
     @Delete
     suspend fun deleteLog(log: FlightLog)
+
+    @Query("DELETE FROM flight_logs WHERE id IN (:ids)")
+    suspend fun deleteByIds(ids: List<Int>)
+
+    @Query("DELETE FROM flight_logs")
+    suspend fun deleteAll()
 }

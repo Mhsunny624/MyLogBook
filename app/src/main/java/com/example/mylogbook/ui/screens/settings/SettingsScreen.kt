@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -30,11 +31,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -48,11 +54,19 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.example.mylogbook.data.FlightLog
+import com.example.mylogbook.data.backup.AutoBackup
 import com.example.mylogbook.data.backup.BackupJson
 import com.example.mylogbook.export.PdfExporter
 import com.example.mylogbook.viewmodel.FlightLogViewModel
 import com.example.mylogbook.workers.ExpiryWorker
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 @SuppressLint("UseKt")
@@ -79,71 +93,113 @@ fun SettingsScreen(
     var exportMonth by remember { mutableStateOf(currentMonth) }
     var exportYear by remember { mutableStateOf(currentYear) }
 
+    val scope = rememberCoroutineScope()
+    var backupStatusTick by remember { mutableIntStateOf(0) }   // bumps when a restore finishes
+    var autoBackupTick by remember { mutableIntStateOf(0) }     // bumps when the auto backup status changes
+    DisposableEffect(prefs) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == AutoBackup.KEY_LAST_OK || key == AutoBackup.KEY_LAST_ERROR || key == AutoBackup.KEY_FOLDER) autoBackupTick++
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    var pendingRestore by remember { mutableStateOf<PendingRestore?>(null) }
+
     val backupLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) {
-            try {
-                val jsonRoot = BackupJson.build(allLogs, prefs, airlineName)
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    outputStream.write(jsonRoot.toString(2).toByteArray(Charsets.UTF_8))
+            scope.launch {
+                try {
+                    val logs = vm.snapshot()
+                    val bytes = BackupJson.build(logs, prefs, airlineName).toString(2).toByteArray(Charsets.UTF_8)
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
+                            ?: throw IllegalStateException("Cannot open the file")
+                    }
+                    Toast.makeText(context, "Backup saved: ${logs.size} entries", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Backup failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 }
-                Toast.makeText(context, "Backup saved successfully!", Toast.LENGTH_LONG).show()
-            } catch (e: Exception) {
-                Toast.makeText(context, "Backup failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         }
     }
 
     val restoreLauncher = rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            try {
-                val jsonString = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                    inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                }
-                if (jsonString != null) {
-                    val jsonRoot = JSONObject(jsonString)
-
-                    BackupJson.restoreSettings(jsonRoot, prefs)
-
-                    val jsonLogs = jsonRoot.getJSONArray("logs")
-                    var restoredCount = 0
-
-                    for (i in 0 until jsonLogs.length()) {
-                        val obj = jsonLogs.getJSONObject(i)
-
-                        val importedLog = BackupJson.logFromJson(obj)
-
-                        val isDuplicate = allLogs.any { existing ->
-                            existing.flightDate == importedLog.flightDate &&
-                                    existing.recordType == importedLog.recordType &&
-                                    existing.flightNo == importedLog.flightNo &&
-                                    existing.departure == importedLog.departure &&
-                                    existing.arrival == importedLog.arrival
-                        }
-
-                        if (!isDuplicate) {
-                            vm.saveLog(importedLog)
-                            restoredCount++
-                        }
+            scope.launch {
+                try {
+                    val root = withContext(Dispatchers.IO) {
+                        val text = context.contentResolver.openInputStream(uri)?.use { it.bufferedReader(Charsets.UTF_8).readText() }
+                            ?: throw IllegalStateException("Cannot open the file")
+                        JSONObject(text)
                     }
-
-                    if (restoredCount > 0) {
-                        Toast.makeText(context, "Successfully imported $restoredCount new entries!", Toast.LENGTH_LONG).show()
-                    } else {
-                        Toast.makeText(context, "No new entries found to import.", Toast.LENGTH_LONG).show()
-                    }
+                    val backupLogs = BackupJson.readLogs(root)
+                    val current = vm.snapshot()
+                    val existingKeys = current.map { BackupJson.duplicateKey(it) }.toHashSet()
+                    val missing = backupLogs.filter { BackupJson.duplicateKey(it) !in existingKeys }
+                    pendingRestore = PendingRestore(root, backupLogs, missing, current.size)
+                } catch (_: Exception) {
+                    Toast.makeText(context, "Restore failed: this is not a MyLogBook backup file", Toast.LENGTH_LONG).show()
                 }
-            } catch (_: Exception) {
-                Toast.makeText(context, "Restore failed: Invalid backup file", Toast.LENGTH_LONG).show()
             }
         }
     }
 
+    pendingRestore?.let { pr ->
+        fun finish(replaceAll: Boolean) {
+            val logs = if (replaceAll) pr.backupLogs else pr.missing
+            BackupJson.restoreSettings(pr.root, prefs)
+            name = prefs.getString("profile_name", "") ?: ""
+            staffId = prefs.getString("profile_id", "") ?: ""
+            rosterName = prefs.getString("profile_roster_name", "") ?: ""
+            pendingRestore = null
+            if (logs.isEmpty() && !replaceAll) {
+                Toast.makeText(context, "Nothing new to add: all entries are already in the app.", Toast.LENGTH_LONG).show()
+                return
+            }
+            vm.importLogs(logs, replaceAll) { count ->
+                backupStatusTick++
+                Toast.makeText(context, if (replaceAll) "Restored $count entries" else "Added $count entries", Toast.LENGTH_LONG).show()
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("Restore backup?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("The backup has ${pr.backupLogs.size} entries. The app has ${pr.currentCount} now.")
+                    if (pr.currentCount > 0) {
+                        Text("Replace all: the app's entries are deleted and replaced with the backup (exact copy).", fontSize = 13.sp)
+                        Text("Add missing: keeps your entries and adds the ${pr.missing.size} entries that are not in the app.", fontSize = 13.sp)
+                    }
+                    Text("Profile and pay settings are also restored from the backup.", fontSize = 12.sp, color = Color.Gray)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { finish(replaceAll = true) }) { Text(if (pr.currentCount > 0) "Replace all" else "Restore") }
+            },
+            dismissButton = {
+                Row {
+                    if (pr.currentCount > 0) TextButton(onClick = { finish(replaceAll = false) }) { Text("Add missing") }
+                    TextButton(onClick = { pendingRestore = null }) { Text("Cancel") }
+                }
+            }
+        )
+    }
+
     val folderPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
-            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(uri, takeFlags)
-            prefs.edit { putString("auto_backup_folder", uri.toString()) }
-            Toast.makeText(context, "Auto-Backup folder set! All future entries will save here.", Toast.LENGTH_LONG).show()
+            try {
+                val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                prefs.edit { putString(AutoBackup.KEY_FOLDER, uri.toString()) }
+                vm.runAutoBackup {
+                    backupStatusTick++
+                    val error = prefs.getString(AutoBackup.KEY_LAST_ERROR, "").orEmpty()
+                    Toast.makeText(context, error.ifEmpty { "Auto backup folder set. A backup was saved there now." }, Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Could not use that folder: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
         }
     }
     // NEW: Triggers the system "Save As" menu for the PDF
@@ -245,7 +301,7 @@ fun SettingsScreen(
             }
         }
 
-        PaySettingsCard(prefs)
+        key(backupStatusTick) { PaySettingsCard(prefs) }   // reload after a restore
 
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -266,11 +322,19 @@ fun SettingsScreen(
                     )
                 }
 
-                val currentFolder = prefs.getString("auto_backup_folder", "")
+                val currentFolder = prefs.getString(AutoBackup.KEY_FOLDER, "")
+                // Re-read the status whenever a backup or restore finishes.
+                val (lastOk, lastError) = remember(autoBackupTick) {
+                    prefs.getLong(AutoBackup.KEY_LAST_OK, 0L) to prefs.getString(AutoBackup.KEY_LAST_ERROR, "").orEmpty()
+                }
                 if (currentFolder.isNullOrEmpty()) {
                     Text("Select a folder on your phone to automatically save a backup file every time you log a flight.", fontSize = 13.sp, color = Color.Gray)
+                } else if (lastError.isNotEmpty()) {
+                    Text("⚠️ $lastError", fontSize = 13.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 } else {
-                    Text("✅ Auto-Backup is Active.", fontSize = 13.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                    val lastText = if (lastOk > 0) SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.US).format(Date(lastOk)) else "not yet"
+                    Text("✅ Auto backup is on. Last backup: $lastText", fontSize = 13.sp, color = Color(0xFF4CAF50), fontWeight = FontWeight.Bold)
+                    Text("Keeps FlightLogAutoBackup.json plus one dated copy per day for 14 days.", fontSize = 12.sp, color = Color.Gray)
                 }
 
                 Button(
@@ -349,3 +413,11 @@ fun SettingsScreen(
         }
     }
 }
+
+/** A backup file that has been read and is waiting for the user to choose how to restore it. */
+private class PendingRestore(
+    val root: JSONObject,
+    val backupLogs: List<FlightLog>,
+    val missing: List<FlightLog>,
+    val currentCount: Int
+)

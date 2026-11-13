@@ -30,45 +30,53 @@ object PdfExporter {
             val homeBase = prefs.getString("profile_base", "DAC") ?: "DAC"
 
             val pdfDocument = PdfDocument()
-            val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
-            val page = pdfDocument.startPage(pageInfo)
-            val canvas: Canvas = page.canvas
             val paint = Paint()
+            var pageNumber = 0
+            lateinit var page: PdfDocument.Page
+            lateinit var canvas: Canvas
 
-            // Draw Header
-            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            paint.textSize = 20f
-            paint.color = Color.BLACK
-            canvas.drawText("MONTHLY FLIGHT & DUTY REPORT", 120f, 60f, paint)
+            // Starts a new A4 page with the report header and table headings; returns the first row's y.
+            fun startPage(): Float {
+                pageNumber++
+                page = pdfDocument.startPage(PdfDocument.PageInfo.Builder(595, 842, pageNumber).create())
+                canvas = page.canvas
+                paint.color = Color.BLACK
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                paint.textSize = 20f
+                canvas.drawText("MONTHLY FLIGHT & DUTY REPORT", 120f, 60f, paint)
 
-            // Draw Crew Info
-            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            paint.textSize = 14f
-            canvas.drawText("Name: $name", 50f, 100f, paint)
-            canvas.drawText("Staff ID: $staffId", 50f, 125f, paint)
-            canvas.drawText("Period: $month / $year", 400f, 100f, paint)
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                paint.textSize = 14f
+                canvas.drawText("Name: $name", 50f, 100f, paint)
+                canvas.drawText("Staff ID: $staffId", 50f, 125f, paint)
+                canvas.drawText("Period: $month / $year", 400f, 100f, paint)
+                if (pageNumber > 1) canvas.drawText("Page $pageNumber", 400f, 125f, paint)
 
-            // Draw Table Headers
-            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            paint.textSize = 12f
-            var yPosition = 170f
-            canvas.drawText("Date", 50f, yPosition, paint)
-            canvas.drawText("Flight/Duty", 120f, yPosition, paint)
-            canvas.drawText("Routing", 220f, yPosition, paint)
-            canvas.drawText("Block", 380f, yPosition, paint)
-            canvas.drawText("Duty", 460f, yPosition, paint)
-
-            // Draw Header Line
-            yPosition += 10f
-            canvas.drawLine(50f, yPosition, 545f, yPosition, paint)
-            yPosition += 20f
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                paint.textSize = 12f
+                var y = 170f
+                canvas.drawText("Date", 50f, y, paint)
+                canvas.drawText("Flight/Duty", 120f, y, paint)
+                canvas.drawText("Routing", 220f, y, paint)
+                canvas.drawText("Block", 380f, y, paint)
+                canvas.drawText("Duty", 460f, y, paint)
+                y += 10f
+                canvas.drawLine(50f, y, 545f, y, paint)
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                return y + 20f
+            }
+            val pageBottom = 790f
+            var yPosition = startPage()
 
             // NEW BULLETPROOF SORTING:
             // 1. Sorts chronologically by day
             // 2. Puts Flights before other logs
             // 3. Puts Sector 1 (which has a Duty On time) before Sector 2 (which doesn't)
+            // flightDate is "dd/MM/yyyy": compare the month and year parts exactly
+            // (a plain "contains" would also match the day, e.g. day 11 for month 11).
             val filteredLogs = logs.filter {
-                it.flightDate.contains(month) && it.flightDate.contains(year)
+                val parts = it.flightDate.split("/")
+                parts.size == 3 && parts[1] == month.padStart(2, '0') && parts[2] == year
             }.sortedWith(compareBy(
                 { it.flightDate.take(2).toIntOrNull() ?: 0 },
                 { it.recordType != "Flight" },
@@ -86,6 +94,10 @@ object PdfExporter {
                 canvas.drawText("No records logged for this period.", 50f, yPosition, paint)
             } else {
                 for ((date, dayLogs) in groupedLogs) {
+                    if (yPosition > pageBottom) {
+                        pdfDocument.finishPage(page)
+                        yPosition = startPage()
+                    }
 
                     // 1. Date
                     canvas.drawText(date.take(5), 50f, yPosition, paint)
@@ -177,7 +189,7 @@ object PdfExporter {
                         badges.add("Short Rest ends ${shortRestInfo.endTimeLocalText}")
                     }
                     if (claimOffInfo != null) {
-                        badges.add("${claimOffInfo.daysOff} Days Off ends ${claimOffInfo.endDateTimeText}")
+                        badges.add("${claimOffInfo.daysOff} ${if (claimOffInfo.daysOff == 1) "Day" else "Days"} Off ends ${claimOffInfo.endDateTimeText}")
                     }
 
                     if (badges.isNotEmpty()) {
@@ -199,7 +211,11 @@ object PdfExporter {
                     }
                 }
 
-                // --- THE FOOTER ---
+                // --- THE FOOTER --- (needs about 120 pt; move it to a new page if it doesn't fit)
+                if (yPosition > 842f - 130f) {
+                    pdfDocument.finishPage(page)
+                    yPosition = startPage()
+                }
                 yPosition += 10f
                 canvas.drawLine(50f, yPosition, 545f, yPosition, paint)
 

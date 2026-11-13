@@ -25,6 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mylogbook.data.FlightLog
+import com.example.mylogbook.domain.duty.blockOffInstants
+import com.example.mylogbook.domain.duty.dutyOnInstant
 import com.example.mylogbook.domain.duty.getMinsFromTimeString
 import com.example.mylogbook.domain.pay.groundedDaysInMonth
 import com.example.mylogbook.ui.components.DailyLogCard
@@ -116,6 +118,13 @@ fun LogbookScreen(
     val sdfUtc = SimpleDateFormat("dd/MM/yyyy", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
     val bstZone = java.util.TimeZone.getTimeZone("Asia/Dhaka")
 
+    // Real block-off instants (later sectors after UTC midnight roll to the next day) and each
+    // day's first sector (decides whether Duty On was on the previous UTC day).
+    val blockStarts = remember(logs) { blockOffInstants(logs) }
+    val firstSectorByDate = remember(logs) {
+        logs.filter { it.recordType == "Flight" }.groupBy { it.flightDate }.mapValues { (_, g) -> g.minBy { it.id } }
+    }
+
     logs.forEach { log ->
         val depDate = try { sdfUtc.parse(log.flightDate) } catch (_: Exception) { null }
         if (depDate != null) {
@@ -129,10 +138,10 @@ fun LogbookScreen(
 
             if (log.recordType == "Flight") {
                 val durMinsBlock = getMinsFromTimeString(log.totalBlock)
-                val offMins = getMinsFromTimeString(log.blockOff)
 
-                val calDepTimeBd = calDepBd.clone() as Calendar
-                calDepTimeBd.add(Calendar.MINUTE, offMins)
+                val calDepTimeBd = Calendar.getInstance(bstZone).apply {
+                    timeInMillis = blockStarts[log.id] ?: depDate.time
+                }
 
                 val calArrBd = calDepTimeBd.clone() as Calendar
                 calArrBd.add(Calendar.MINUTE, durMinsBlock)
@@ -173,10 +182,9 @@ fun LogbookScreen(
                 }
 
                 val durMinsDuty = getMinsFromTimeString(log.totalDuty)
-                if (log.dutyOn.isNotBlank() && durMinsDuty > 0) {
-                    val onMins = getMinsFromTimeString(log.dutyOn)
-                    val calOnBd = calDepBd.clone() as Calendar
-                    calOnBd.add(Calendar.MINUTE, onMins)
+                val dutyOnAt = if (durMinsDuty > 0) dutyOnInstant(depDate.time, log.dutyOn, firstSectorByDate[log.flightDate]) else null
+                if (dutyOnAt != null) {
+                    val calOnBd = Calendar.getInstance(bstZone).apply { timeInMillis = dutyOnAt }
 
                     val calOffBd = calOnBd.clone() as Calendar
                     calOffBd.add(Calendar.MINUTE, durMinsDuty)
