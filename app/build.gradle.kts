@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// Release signing: read from keystore.properties in the project root (never committed).
+// Keys: storeFile, storePassword, keyAlias, keyPassword. Without it, release builds are unsigned.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -11,17 +20,38 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.mylogbook"
+        // Never change once released: Android identifies the installed app by this ID.
+        applicationId = "com.mhsunny.mylogbook"
         minSdk = 23
         targetSdk = 37
+        // Bump both for every GitHub release (versionCode must always increase).
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProps.getProperty("storeFile") != null) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            // Test builds install next to the released app instead of replacing it.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
+            if (keystoreProps.getProperty("storeFile") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             optimization {
                 enable = false
             }
@@ -33,11 +63,11 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
-    implementation(libs.generativeai)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.documentfile)
@@ -49,7 +79,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.documentfile)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

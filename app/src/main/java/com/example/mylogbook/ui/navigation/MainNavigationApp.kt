@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.mylogbook.ui.components.StartupDialogs
 import com.example.mylogbook.ui.screens.calculator.TimeCalculatorScreen
 import com.example.mylogbook.ui.screens.entry.FlightEntryScreen
 import com.example.mylogbook.ui.screens.logbook.LogbookScreen
@@ -195,5 +196,7 @@ fun MainNavigationApp(
                 }
             }
         }
+
+        StartupDialogs(prefs)
     }
 }

@@ -14,6 +14,16 @@ Everything is stored on the phone. There's no server and no account.
 > Pay figures are **estimates** based on the rules in [docs/RULES.md](docs/RULES.md). Rates can be changed in
 > Settings → Pay Settings. This is a personal project and is not affiliated with Biman Bangladesh Airlines.
 
+## Download
+
+Get the latest APK from **[Releases](https://github.com/Mhsunny624/MyLogBook/releases/latest)**:
+
+1. Download `MyLogBook-vX.Y.Z.apk` on your phone and open it.
+2. If asked, allow your browser or file manager to **install unknown apps**.
+3. Open the app, then go to **Settings**: enter your profile and **Pay Settings** (crew type, joining date, basic salary), and turn on **Auto Backup**.
+
+The app checks for new releases when it opens and shows **Update available** with a download link. New versions install over the old one and keep your entries.
+
 ## Features
 
 | Tab | What it does |
@@ -105,11 +115,22 @@ After changing a rule, update `docs/RULES.md` and the tests.
 
 ## Rules that protect user data — please keep them
 
-1. **Do not change `applicationId` (`com.example.mylogbook`).** Android would treat it as a different app, and existing installs couldn't be updated without wiping data.
+1. **Do not change `applicationId` (`com.mhsunny.mylogbook`).** Android would treat it as a different app, and crew couldn't update without reinstalling. (The Kotlin package stays `com.example.mylogbook`; that is only the code namespace.)
 2. **Do not rename the database file** (`biman_flight_log_db`), the table, or `workers/ExpiryWorker` (WorkManager stores the class name).
 3. **Any change to `FlightLog` changes the schema.** Bump `version` in `AppDatabase` and add a `Migration` in `Migrations.kt`. Never use `fallbackToDestructiveMigration()`, which deletes the logbook.
 4. **When adding a `FlightLog` field,** add it to `BackupJson` too. Read it with `optString(..., default)` so old backup files still restore.
-5. **Release builds** must always be signed with the same keystore. Keep the keystore out of git (`*.jks` is ignored).
+5. **Release builds** must always be signed with the same keystore. Keep the keystore out of git (`*.jks` and `keystore.properties` are ignored).
+
+## Making a release
+
+1. One time only: run `tools\setup-release-key.ps1`. It creates the signing key in `..\MyLogBook-keys\` and a local `keystore.properties`. Back up that folder and the password.
+2. Bump `versionCode` (+1) and `versionName` in `app/build.gradle.kts`.
+3. Run `gradlew.bat :app:testDebugUnitTest :app:assembleRelease`.
+4. Create a GitHub release tagged `vX.Y.Z` and attach `app/build/outputs/apk/release/app-release.apk`, renamed to `MyLogBook-vX.Y.Z.apk`.
+
+Installed apps find the new release through the update check (`data/update/UpdateChecker.kt`), which reads the latest GitHub release.
+
+Debug builds use the ID `com.mhsunny.mylogbook.debug`, so they install next to the released app.
 
 ## Tests
 
