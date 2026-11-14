@@ -66,10 +66,10 @@ class UpdateFlow(private val context: Context, private val scope: CoroutineScope
         }
     }
 
-    /** Background check at start-up (at most every 12 hours); only surfaces a newer version. */
+    /** Background check every time the app starts; only surfaces a newer version (silent when offline). */
     fun checkQuietly(prefs: SharedPreferences) {
         scope.launch {
-            UpdateChecker.checkForUpdate(prefs, BuildConfig.VERSION_NAME)?.let { state = UpdateState.Available(it) }
+            UpdateChecker.checkForUpdate(prefs, BuildConfig.VERSION_NAME, force = true)?.let { state = UpdateState.Available(it) }
         }
     }
 
@@ -121,7 +121,7 @@ fun UpdateStatus(flow: UpdateFlow, showCheckButton: Boolean) {
                 Text("Version ${s.release.version} is available", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 val notes = shortNotes(s.release.notes)
                 if (notes.isNotBlank()) Text(notes, fontSize = 12.sp, color = Color.Gray, lineHeight = 16.sp)
-                Button(onClick = { flow.download(s.release) }, modifier = Modifier.fillMaxWidth()) { Text("Update now") }
+                Button(onClick = { flow.download(s.release) }, modifier = Modifier.fillMaxWidth()) { Text("Install update") }
             }
             is UpdateState.Downloading -> {
                 Text("Downloading version ${s.release.version}…", fontSize = 13.sp)
@@ -159,10 +159,10 @@ fun UpdateAvailableDialog(flow: UpdateFlow) {
         ?: (s as? UpdateState.Ready)?.release?.version ?: (s as? UpdateState.Failed)?.release?.version
     AlertDialog(
         onDismissRequest = { if (s !is UpdateState.Downloading) flow.dismiss() },
-        title = { Text(if (title != null) "Update available: $title" else "Update") },
+        title = { Text(if (title != null) "Update available: v$title" else "Update") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("You have ${BuildConfig.VERSION_NAME}.", fontSize = 13.sp, color = Color.Gray)
+                Text("A new version of MyLogBook is ready. You have ${BuildConfig.VERSION_NAME}; your entries are kept when you update.", fontSize = 13.sp, color = Color.Gray)
                 UpdateStatus(flow, showCheckButton = false)
             }
         },
