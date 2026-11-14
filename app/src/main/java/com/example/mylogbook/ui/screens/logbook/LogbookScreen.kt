@@ -32,6 +32,7 @@ import com.example.mylogbook.domain.pay.groundedDaysInMonth
 import com.example.mylogbook.ui.components.DailyLogCard
 import com.example.mylogbook.ui.components.MonthlySummaryCard
 import com.example.mylogbook.ui.components.PayEstimateSection
+import com.example.mylogbook.ui.components.YearAllowanceTable
 import com.example.mylogbook.ui.components.SingleLineSummaryCard
 import com.example.mylogbook.ui.components.StatCard
 import com.example.mylogbook.viewmodel.FlightLogViewModel
@@ -456,6 +457,14 @@ fun LogbookScreen(
                             SingleLineSummaryCard(
                                 title = "Annual Total Duty",
                                 value = String.format("%d hrs %02d mins", totalDutyMins / 60, totalDutyMins % 60)
+                            )
+                        }
+                        item {
+                            YearAllowanceTable(
+                                logs = logs,
+                                homeBase = homeBase,
+                                year = selectedYear.toIntOrNull() ?: calendar.get(Calendar.YEAR),
+                                monthlyBlockMins = monthlyBlockMins
                             )
                         }
 

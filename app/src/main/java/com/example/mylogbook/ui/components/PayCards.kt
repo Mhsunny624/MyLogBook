@@ -13,6 +13,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -65,6 +69,7 @@ fun PayEstimateSection(logs: List<FlightLog>, homeBase: String, year: Int, month
     val takaEstimate = remember(rates, flyMins) { estimateTaka(rates, flyMins) }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        HoursProgressCard(usdEstimate, year, month0)
         UsdPayCard(usdEstimate, month0, groundedDaysInMonth(logs, year, month0))
         TakaPayCard(takaEstimate, rates.flyingTkPerHour, rates.houseRentPct, rates.specialPct, month0)
     }
@@ -195,5 +200,100 @@ private fun TakaPayCard(t: TakaEstimate, tkPerHour: Double, hrPct: Double, speci
             )
         }
         PayNote("Not included: duty overtime, refused day-off, absence deductions, CPF, tax and loans.")
+    }
+}
+
+/**
+ * Flying hours against the monthly minimum (70 h by default) with a progress bar, so a shortfall
+ * is visible before the month ends. A long-stay waiver lowers the hours needed.
+ */
+@Composable
+private fun HoursProgressCard(e: UsdEstimate, year: Int, month0: Int) {
+    val targetMins = (e.minHours - e.waiverHours).coerceAtLeast(0) * 60
+    val flown = e.flyMins
+    val reached = flown >= targetMins
+    val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Dhaka"))
+    val isCurrentMonth = now.get(java.util.Calendar.YEAR) == year && now.get(java.util.Calendar.MONTH) == month0
+    val daysLeft = if (isCurrentMonth) now.getActualMaximum(java.util.Calendar.DAY_OF_MONTH) - now.get(java.util.Calendar.DAY_OF_MONTH) else 0
+    val green = Color(0xFF4CAF50)
+    PayCardFrame {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Flying hours", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+            Text("${hm(flown.toLong())} / ${hm(targetMins.toLong())}", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        LinearProgressIndicator(
+            progress = { if (targetMins == 0) 1f else (flown.toFloat() / targetMins).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().height(10.dp),
+            color = if (reached) green else MaterialTheme.colorScheme.primary,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            strokeCap = StrokeCap.Round,
+            gapSize = 0.dp,
+            drawStopIndicator = {}
+        )
+        Text(
+            if (reached) "Target reached: ${hm((flown - targetMins).toLong())} above"
+            else "${hm((targetMins - flown).toLong())} to go" + if (isCurrentMonth) " • $daysLeft ${if (daysLeft == 1) "day" else "days"} left this month" else "",
+            fontSize = 13.sp,
+            color = if (reached) green else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+        if (e.waiverHours > 0) {
+            PayNote("Target lowered from ${e.minHours} hrs by the ${e.waiverHours} hrs long-stay waiver.")
+        }
+    }
+}
+
+/**
+ * Year view: block hours, expected USD statement and incidental earned for each month.
+ * [monthlyBlockMins] = block minutes per month, already split at month ends (Bangladesh time).
+ */
+@Composable
+fun YearAllowanceTable(logs: List<FlightLog>, homeBase: String, year: Int, monthlyBlockMins: IntArray) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("FlightLogPrefs", Context.MODE_PRIVATE) }
+    val rates = loadPayRates(prefs)
+    val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Dhaka"))
+    val lastMonth = when {
+        year < now.get(java.util.Calendar.YEAR) -> 11
+        year == now.get(java.util.Calendar.YEAR) -> now.get(java.util.Calendar.MONTH)
+        else -> -1
+    }
+    data class Row3(val month0: Int, val block: Int, val usd: Double, val incidental: Double)
+    val rows = remember(logs, homeBase, year, monthlyBlockMins.toList(), rates) {
+        (0..lastMonth).mapNotNull { m ->
+            val e = estimateUsd(logs, homeBase, year, m, monthlyBlockMins[m], rates)
+            val inc = e.currentIncidental.usd
+            // Skip months with nothing logged (before you started using the app).
+            if (monthlyBlockMins[m] == 0 && inc == 0.0 && e.previousIncidental.usd == 0.0) null
+            else Row3(m, monthlyBlockMins[m], e.rounded, inc)
+        }
+    }
+    val names = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    PayCardFrame {
+        Text("Allowances by month", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
+        if (rows.isEmpty()) {
+            Text("No months with flying in $year.", fontSize = 13.sp, color = Color.Gray)
+            return@PayCardFrame
+        }
+        @Composable
+        fun line(a: String, b: String, c: String, d: String, bold: Boolean = false, color: Color = MaterialTheme.colorScheme.onSurface) {
+            val w = if (bold) FontWeight.Bold else FontWeight.Normal
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text(a, modifier = Modifier.weight(0.8f), fontSize = 13.sp, fontWeight = w, color = color)
+                Text(b, modifier = Modifier.weight(1f), fontSize = 13.sp, fontWeight = w, color = color, textAlign = TextAlign.End)
+                Text(c, modifier = Modifier.weight(1.3f), fontSize = 13.sp, fontWeight = w, color = color, textAlign = TextAlign.End)
+                Text(d, modifier = Modifier.weight(1.2f), fontSize = 13.sp, fontWeight = w, color = color, textAlign = TextAlign.End)
+            }
+        }
+        line("Month", "Block", "USD", "Incidental", bold = true, color = Color.Gray)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        rows.forEach { r ->
+            val under = r.block < rates.minHours * 60
+            line(names[r.month0], hm(r.block.toLong()), money(r.usd), money(r.incidental),
+                color = if (under && r.month0 != lastMonth) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        line("Total", hm(rows.sumOf { it.block }.toLong()), money(rows.sumOf { it.usd }), money(rows.sumOf { it.incidental }), bold = true)
+        PayNote("USD = expected statement for that month (its flying + the previous month's incidental). Incidental = earned that month, paid the month after. Months under ${rates.minHours} hrs are shown in red.")
     }
 }
