@@ -215,7 +215,15 @@ private fun HoursProgressCard(e: UsdEstimate, year: Int, month0: Int) {
     val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Dhaka"))
     val isCurrentMonth = now.get(java.util.Calendar.YEAR) == year && now.get(java.util.Calendar.MONTH) == month0
     val daysLeft = if (isCurrentMonth) now.getActualMaximum(java.util.Calendar.DAY_OF_MONTH) - now.get(java.util.Calendar.DAY_OF_MONTH) else 0
+    // A finished month that fell short is shown as a shortfall, not "to go".
+    val isPast = year < now.get(java.util.Calendar.YEAR) ||
+        (year == now.get(java.util.Calendar.YEAR) && month0 < now.get(java.util.Calendar.MONTH))
     val green = Color(0xFF4CAF50)
+    val barColor = when {
+        reached -> green
+        isPast -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.primary
+    }
     PayCardFrame {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Flying hours", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
@@ -224,17 +232,24 @@ private fun HoursProgressCard(e: UsdEstimate, year: Int, month0: Int) {
         LinearProgressIndicator(
             progress = { if (targetMins == 0) 1f else (flown.toFloat() / targetMins).coerceIn(0f, 1f) },
             modifier = Modifier.fillMaxWidth().height(10.dp),
-            color = if (reached) green else MaterialTheme.colorScheme.primary,
+            color = barColor,
             trackColor = MaterialTheme.colorScheme.surfaceVariant,
             strokeCap = StrokeCap.Round,
             gapSize = 0.dp,
             drawStopIndicator = {}
         )
         Text(
-            if (reached) "Target reached: ${hm((flown - targetMins).toLong())} above"
-            else "${hm((targetMins - flown).toLong())} to go" + if (isCurrentMonth) " • $daysLeft ${if (daysLeft == 1) "day" else "days"} left this month" else "",
+            when {
+                reached -> "Target reached: ${hm((flown - targetMins).toLong())} above"
+                isPast -> "Short by ${hm((targetMins - flown).toLong())}"
+                else -> "${hm((targetMins - flown).toLong())} to go" + if (isCurrentMonth) " • $daysLeft ${if (daysLeft == 1) "day" else "days"} left this month" else ""
+            },
             fontSize = 13.sp,
-            color = if (reached) green else MaterialTheme.colorScheme.onSurface,
+            color = when {
+                reached -> green
+                isPast -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.onSurface
+            },
             fontWeight = FontWeight.SemiBold
         )
         if (e.waiverHours > 0) {
