@@ -25,8 +25,8 @@ android {
         minSdk = 23
         targetSdk = 37
         // Bump both for every GitHub release (versionCode must always increase).
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
