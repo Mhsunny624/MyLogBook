@@ -2,4 +2,13 @@
 <resources>
 
     <style name="Theme.BimanFlightLog" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Launch screen (androidx SplashScreen): the app icon on dark navy, shown from the first frame
+         until the logbook has loaded, then MainActivity switches to Theme.BimanFlightLog. -->
+    <style name="Theme.MyLogBook.Starting" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">#0F172A</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="windowSplashScreenIconBackgroundColor">#DCEEFC</item>
+        <item name="postSplashScreenTheme">@style/Theme.BimanFlightLog</item>
+    </style>
 </resources>

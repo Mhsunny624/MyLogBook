@@ -16,7 +16,10 @@ import com.example.mylogbook.data.AppDatabase
 import com.example.mylogbook.data.FlightLog
 import com.example.mylogbook.data.backup.AutoBackup
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -26,8 +29,14 @@ class FlightLogViewModel(application: Application) : AndroidViewModel(applicatio
     private val db = AppDatabase.getDatabase(application)
     private val dao = db.flightLogDao()
 
+    private val _loaded = MutableStateFlow(false)
+    /** True once the logbook has been read from the database (the launch screen waits for this). */
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
+    // Starts reading right away so the list is ready when the launch screen hands over.
     val allLogs: StateFlow<List<FlightLog>> = dao.getAllLogs()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .onEach { _loaded.value = true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     var logsBeingEdited by mutableStateOf<List<FlightLog>?>(null)
 

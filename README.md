@@ -84,7 +84,7 @@ app/src/main/java/com/example/mylogbook/
 ├── ui/
 │   ├── navigation/            bottom navigation, Add button, entry overlay, back handling
 │   ├── components/            reusable cards and input fields
-│   ├── screens/               one folder per screen: entry, logbook, records, settings, calculator, splash
+│   ├── screens/               one folder per screen: entry, logbook, records, settings, calculator (launch screen: Android SplashScreen API, see MainActivity + res/values/themes.xml)
 │   └── theme/
 ├── viewmodel/FlightLogViewModel.kt
 └── workers/ExpiryWorker.kt    daily expiry notifications
