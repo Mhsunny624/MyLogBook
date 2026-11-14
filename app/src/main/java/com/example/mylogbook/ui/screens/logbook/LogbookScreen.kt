@@ -232,7 +232,7 @@ fun LogbookScreen(
                         monthlyDutyMins[depMonthIdx] += durMinsDuty
                     }
                 }
-            } else {
+            } else if (log.recordType != "Document") {   // passports / crew IDs live under Records only
                 if (matchDep) {
                     includeInDisplay = true
                     if (log.recordType == "Training") {

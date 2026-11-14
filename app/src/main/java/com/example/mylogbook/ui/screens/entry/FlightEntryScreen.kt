@@ -34,12 +34,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AirplanemodeActive
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Sick
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -119,11 +123,31 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val savedLogs by vm.allLogs.collectAsState()
+    // ---- From your logbook history: recent trips, last flight number per route, aircraft regs.
+    val flightHistory = remember(savedLogs) {
+        savedLogs.filter { it.recordType == "Flight" && it.departure.isNotBlank() && it.arrival.isNotBlank() }
+    }
+    val recentTrips: List<List<ChainedSector>> = remember(flightHistory) {
+        flightHistory.groupBy { it.flightDate }.values
+            .map { day -> day.sortedBy { it.id } }
+            .groupBy { day -> day.map { Triple(it.flightNo, it.departure, it.arrival) } }
+            .entries
+            .sortedWith(compareByDescending<Map.Entry<List<Triple<String, String, String>>, List<List<FlightLog>>>> { it.value.size }
+                .thenByDescending { e -> e.value.maxOf { day -> day.maxOf { it.id } } })
+            .take(5)
+            .map { e -> e.key.map { (no, dep, arr) -> ChainedSector(flightNo = no, departure = dep, arrival = arr) } }
+    }
+    fun lastFlightNo(dep: String, arr: String): String =
+        flightHistory.filter { it.departure == dep && it.arrival == arr && it.flightNo.isNotBlank() }.maxByOrNull { it.id }?.flightNo.orEmpty()
+    val knownRegs = remember(savedLogs) {
+        savedLogs.sortedByDescending { it.id }.map { it.aircraftReg.trim() }.filter { it.length > 3 }.distinct().take(12)
+    }
+
     val previewHomeBase = remember {
         context.getSharedPreferences("FlightLogPrefs", Context.MODE_PRIVATE).getString("profile_base", "DAC") ?: "DAC"
     }
 
-    val tabs = listOf("Flight", "Training", "Health Card", "Sick")
+    val tabs = listOf("Flight", "Training", "Health Card", "Sick", "Document")
 
     val initialPage = (Int.MAX_VALUE / 2) - ((Int.MAX_VALUE / 2) % tabs.size)
     val pagerState = rememberPagerState(initialPage = initialPage, pageCount = { Int.MAX_VALUE })
@@ -133,6 +157,8 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
     var expiryDate by remember { mutableStateOf("") }
     var endDate by remember { mutableStateOf("") }
     var healthMode by remember { mutableStateOf("Health Card") }
+    var docType by remember { mutableStateOf("Passport") }   // Document tab: "Passport" or "Crew ID"
+    var pendingWarnings by remember { mutableStateOf<List<String>>(emptyList()) }
     var groundReason by remember { mutableStateOf("") }
     var logbookNumber by remember { mutableStateOf("") }
     var aircraftReg by remember { mutableStateOf("S2-") }
@@ -154,6 +180,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
 
     var dateError by remember { mutableStateOf(false) }
     var trainingTypeExpanded by remember { mutableStateOf(false) }
+    var regExpanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(vm.logsBeingEdited) {
         val editingLogs = vm.logsBeingEdited
@@ -177,6 +204,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
             endDate = if (firstLog.recordType == "Training" || (firstLog.recordType == "Health Card" && firstLog.trainingType == "Grounded")) firstLog.dutyOff else ""
             healthMode = if (firstLog.recordType == "Health Card" && firstLog.trainingType == "Grounded") "Grounded" else "Health Card"
             groundReason = if (healthMode == "Grounded") firstLog.dutyType else ""
+            docType = if (firstLog.recordType == "Document") firstLog.trainingType.ifBlank { "Passport" } else "Passport"
 
             val dutySourceLog = editingLogs.firstOrNull { it.dutyOn.isNotBlank() } ?: firstLog
             dutyOnTime = dutySourceLog.dutyOn.filter { it.isDigit() }
@@ -210,7 +238,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
             dutyOnTime = ""; dutyOffTime = ""; totalDutyTime = ""
             flightDate = ""; aircraftReg = "S2-"; logbookNumber = ""; notes = ""; crewNames = ""
             healthMode = "Health Card"; groundReason = ""
-            trainingType = ""; expiryDate = ""; endDate = ""; dutyType = "Operating"
+            trainingType = ""; expiryDate = ""; endDate = ""; dutyType = "Operating"; docType = "Passport"
         }
         dateError = false
     }
@@ -270,6 +298,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                     "Flight" -> Icons.Filled.AirplanemodeActive
                     "Training" -> Icons.Filled.School
                     "Health Card" -> Icons.Filled.LocalHospital
+                    "Document" -> Icons.Filled.Badge
                     else -> Icons.Filled.Sick
                 }
                 Tab(
@@ -280,7 +309,7 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                         else if (pageDiff < -(tabs.size / 2)) pageDiff += tabs.size
                         coroutineScope.launch { pagerState.animateScrollToPage(pagerState.currentPage + pageDiff) }
                     },
-                    text = { Text(title) },
+                    text = { Text(if (title == "Document") "Documents" else title) },
                     icon = { Icon(icon, contentDescription = title) }
                 )
             }
@@ -297,7 +326,27 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                 modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (currentRecordType != "Flight") {
+                if (currentRecordType == "Document") {
+                    // Passport / Crew ID: only the expiry date matters (reminders), no number is stored.
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = docType == "Passport", onClick = { docType = "Passport" }, label = { Text("Passport") })
+                        FilterChip(selected = docType == "Crew ID", onClick = { docType = "Crew ID" }, label = { Text("Crew ID") })
+                    }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = expiryDate, onValueChange = {},
+                            label = { Text("$docType expiry date") },
+                            modifier = Modifier.fillMaxWidth(), readOnly = true, singleLine = true
+                        )
+                        Box(modifier = Modifier.matchParentSize().clickable { expiryPickerDialog.show() })
+                    }
+                    Text(
+                        if (docType == "Passport") "Reminders 6 months, 3 months and 1 month before expiry, then daily from 7 days."
+                        else "Reminders 30 days before expiry, then daily from 7 days.",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (currentRecordType != "Flight" && currentRecordType != "Document") {
                     val isGrounded = currentRecordType == "Health Card" && healthMode == "Grounded"
                     if (currentRecordType == "Health Card") {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -401,7 +450,19 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         OutlinedTextField(value = logbookNumber, onValueChange = { logbookNumber = it }, label = { Text("Logbook #") }, modifier = Modifier.weight(0.4f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                                        OutlinedTextField(value = aircraftReg, onValueChange = { aircraftReg = it.uppercase() }, label = { Text("Aircraft Reg") }, modifier = Modifier.weight(0.6f), singleLine = true, keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters))
+                                        // Suggests the regs you have flown before.
+                                        val regMatches = knownRegs.filter { it.contains(aircraftReg.removePrefix("S2-"), ignoreCase = true) && it != aircraftReg }
+                                        ExposedDropdownMenuBox(expanded = regExpanded && regMatches.isNotEmpty(), onExpandedChange = { regExpanded = it }, modifier = Modifier.weight(0.6f)) {
+                                            OutlinedTextField(
+                                                value = aircraftReg, onValueChange = { aircraftReg = it.uppercase(); regExpanded = true },
+                                                label = { Text("Aircraft Reg") }, singleLine = true,
+                                                modifier = Modifier.menuAnchor(type = ExposedDropdownMenuAnchorType.PrimaryEditable, enabled = true).fillMaxWidth(),
+                                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters)
+                                            )
+                                            ExposedDropdownMenu(expanded = regExpanded && regMatches.isNotEmpty(), onDismissRequest = { regExpanded = false }) {
+                                                regMatches.forEach { reg -> DropdownMenuItem(text = { Text(reg) }, onClick = { aircraftReg = reg; regExpanded = false }) }
+                                            }
+                                        }
                                     }
                                 }
 
@@ -439,6 +500,22 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                 }
                                 if (sectorsExpanded) {
                                     Text("All times in UTC", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
+                                    // Recent trips: one tap fills flight numbers and routes (only while no times are typed).
+                                    val noTimesYet = sectors.all { it.blockOff.isBlank() && it.blockOn.isBlank() && it.totalBlock.isBlank() && it.schedDep.isBlank() }
+                                    if (vm.logsBeingEdited == null && noTimesYet && recentTrips.isNotEmpty()) {
+                                        Text("Recent trips", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 8.dp))
+                                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            recentTrips.forEach { trip ->
+                                                AssistChip(
+                                                    onClick = {
+                                                        sectors.clear()
+                                                        trip.forEach { sectors.add(it.copy()) }
+                                                    },
+                                                    label = { Text(tripLabel(trip), maxLines = 1) }
+                                                )
+                                            }
+                                        }
+                                    }
                                     sectors.forEachIndexed { index, sector ->
                                         if (index > 0) {
                                             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f))
@@ -473,7 +550,9 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                                 AirportAutoCompleteTextField(
                                                     label = "To", value = sector.arrival, isError = false,
                                                     onValueChange = { newVal ->
-                                                        sectors[index] = sector.copy(arrival = newVal)
+                                                        // Fill the flight number from the last time you flew this route.
+                                                        val suggested = if (sector.flightNo.isBlank() && newVal.length == 3) lastFlightNo(sector.departure, newVal) else ""
+                                                        sectors[index] = sector.copy(arrival = newVal, flightNo = sector.flightNo.ifBlank { suggested })
                                                         if (index + 1 < sectors.size) sectors[index + 1] = sectors[index + 1].copy(departure = newVal)
                                                     },
                                                     modifier = Modifier.weight(1f)
@@ -517,16 +596,29 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                             Text(String.format("%02d:%02d", totalMins / 60, totalMins % 60), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                         }
                                     }
-                                    TextButton(
-                                        onClick = {
+                                    Row(modifier = Modifier.padding(top = 6.dp)) {
+                                        TextButton(onClick = {
                                             val prevArr = sectors.lastOrNull()?.arrival ?: ""
                                             sectors.add(ChainedSector(departure = prevArr))
-                                        },
-                                        modifier = Modifier.padding(top = 6.dp)
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Add sector")
+                                        }) {
+                                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Add sector")
+                                        }
+                                        // Reverse of the last sector, with the flight number you last used on that route.
+                                        val last = sectors.lastOrNull()
+                                        if (last != null && last.departure.isNotBlank() && last.arrival.isNotBlank()) {
+                                            TextButton(onClick = {
+                                                sectors.add(ChainedSector(
+                                                    departure = last.arrival, arrival = last.departure,
+                                                    flightNo = lastFlightNo(last.arrival, last.departure)
+                                                ))
+                                            }) {
+                                                Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Add return")
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -667,9 +759,114 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
         val activeRecordType = tabs[actualCurrentPage]
         val saveGrounded = activeRecordType == "Health Card" && healthMode == "Grounded"
 
+        // Saves the form (called directly, or from "Save anyway" in the warning dialog).
+        fun doSave() {
+                var calculatedTrainingDuty = ""
+                var finalEndDate = endDate
+                if (activeRecordType == "Training") {
+                    try {
+                        val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.US)
+                        val start = sdf.parse(flightDate)
+                        val end = if (endDate.isNotBlank()) sdf.parse(endDate) else start
+                        if (start != null && end != null) {
+                            val diffInMillis = end.time - start.time
+                            val days = TimeUnit.MILLISECONDS.toDays(diffInMillis).toInt() + 1
+                            val totalMins = 1.coerceAtLeast(days) * 8 * 60
+                            calculatedTrainingDuty = String.format("%02d%02d", totalMins / 60, totalMins % 60)
+                            if (endDate.isBlank()) finalEndDate = flightDate
+                        }
+                    } catch (_: Exception) {
+                        calculatedTrainingDuty = "0800"
+                    }
+                }
+
+                // A flying day saves one record per sector; everything else (incl. Day Off) is one record.
+                val isFlyingDay = activeRecordType == "Flight" && dutyType != "Day Off"
+                val sectorsToSave = if (isFlyingDay) sectors.toList() else sectors.take(1)
+                val toSave = mutableListOf<FlightLog>()
+                sectorsToSave.forEachIndexed { index, sec ->
+
+                    val savedRecordType = if (activeRecordType == "Flight" && dutyType == "Day Off") "Day Off" else activeRecordType
+                    val savedFlightNo = if (activeRecordType == "Flight" && dutyType == "Day Off") "DAY OFF" else if (activeRecordType == "Flight") sec.flightNo else ""
+
+                    val newLog = FlightLog(
+                        id = sec.id,
+                        recordType = savedRecordType,
+                        trainingType = if (activeRecordType == "Training") trainingType else if (saveGrounded) "Grounded" else "",
+                        expiryDate = if (saveGrounded) "" else if (activeRecordType == "Training" || activeRecordType == "Health Card" || activeRecordType == "Sick") expiryDate else "",
+                        logbookNumber = if (activeRecordType == "Flight" && dutyType != "Day Off") logbookNumber else "",
+                        flightNo = savedFlightNo,
+                        aircraftReg = if (activeRecordType == "Flight" && dutyType != "Day Off") aircraftReg else "",
+                        departure = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.departure else "",
+                        arrival = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.arrival else "",
+                        dutyType = if (activeRecordType == "Flight") dutyType else if (saveGrounded) groundReason.trim() else "",
+                        flightDate = flightDate,
+                        dutyOn = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") dutyOnTime else "",
+                        dutyOff = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") dutyOffTime else if (activeRecordType == "Training") finalEndDate else if (saveGrounded) endDate else "",
+                        totalDuty = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") totalDutyTime else if (activeRecordType == "Training") calculatedTrainingDuty else "",
+                        blockOff = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.blockOff else "",
+                        blockOn = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.blockOn else "",
+                        totalBlock = if (activeRecordType == "Flight" && dutyType != "Day Off") normalizeTimeStr(sec.totalBlock) else "",
+                        crewNames = if (activeRecordType == "Flight" && dutyType != "Day Off") crewNames else "",
+                        notes = if (isFlyingDay && sectorsToSave.size > 1) "$notes (Sector ${index + 1} of ${sectorsToSave.size})".trim() else notes.trim(),
+                        schedDep = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") sec.schedDep else ""
+                    )
+                    toSave += newLog
+                }
+
+                // Records of the original entry that are no longer part of it (removed sectors,
+                // or extra sectors when a flying day becomes a Day Off / another record type).
+                val keptIds = toSave.map { it.id }.filter { it != 0 }.toSet()
+                val deleteIds = vm.logsBeingEdited.orEmpty().map { it.id }.filter { it !in keptIds }
+                vm.saveEntries(toSave, deleteIds)
+
+
+                Toast.makeText(context, if (vm.logsBeingEdited != null) "Updated!" else "Saved!", Toast.LENGTH_SHORT).show()
+                vm.logsBeingEdited = null
+                onSaveSuccess(activeRecordType)
+        }
+
+        // Warnings for a flying day; empty when nothing looks wrong.
+        fun flightWarnings(): List<String> {
+            val w = mutableListOf<String>()
+            val editingIds = vm.logsBeingEdited.orEmpty().map { it.id }.toSet()
+            sectors.forEachIndexed { i, sec ->
+                val n = if (sectors.size > 1) "Sector ${i + 1}: " else ""
+                val block = getMinsFromTimeString(sec.totalBlock)
+                if (block > 18 * 60) w += "${n}block time ${formatWithColon(normalizeTimeStr(sec.totalBlock))} is over 18 hours."
+                if (isClockTime(sec.blockOff) && sec.blockOff == sec.blockOn) w += "${n}block off and block on are the same time."
+                val dup = savedLogs.any {
+                    it.id !in editingIds && it.recordType == "Flight" && it.flightDate == flightDate &&
+                        it.flightNo == sec.flightNo && it.departure == sec.departure && it.arrival == sec.arrival
+                }
+                if (dup) w += "${n}${sec.flightNo} ${sec.departure}→${sec.arrival} on $flightDate is already in your logbook."
+            }
+            val lastOn = sectors.lastOrNull()?.blockOn.orEmpty()
+            if (isClockTime(dutyOffTime) && isClockTime(lastOn)) {
+                // Duty Off should be after the last block on (allowing for midnight).
+                val gap = (getMinsFromTimeString(dutyOffTime) - getMinsFromTimeString(lastOn) + 24 * 60) % (24 * 60)
+                if (gap > 12 * 60) w += "Duty Off ${formatWithColon(dutyOffTime)} is earlier than the last block on ${formatWithColon(lastOn)}."
+            }
+            return w
+        }
+
+        if (pendingWarnings.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { pendingWarnings = emptyList() },
+                title = { Text("Check before saving") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        pendingWarnings.forEach { Text("• $it", fontSize = 14.sp) }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { pendingWarnings = emptyList(); doSave() }) { Text("Save anyway") } },
+                dismissButton = { TextButton(onClick = { pendingWarnings = emptyList() }) { Text("Fix") } }
+            )
+        }
+
         Button(
             onClick = {
-                dateError = flightDate.isBlank()
+                dateError = flightDate.isBlank() && activeRecordType != "Document"
                 var hasError = dateError
 
                 if (activeRecordType == "Flight" && dutyType != "Day Off") {
@@ -683,76 +880,18 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                     val sdfG = SimpleDateFormat("dd/MM/yyyy", Locale.US)
                     try { sdfG.parse(endDate)!!.before(sdfG.parse(flightDate)) } catch (_: Exception) { false }
                 }
-                if (hasError) {
+                if (activeRecordType == "Document" && expiryDate.isBlank()) {
+                    Toast.makeText(context, "Choose the $docType expiry date", Toast.LENGTH_SHORT).show()
+                } else if (hasError) {
                     Toast.makeText(context, "Please complete required fields for all sectors", Toast.LENGTH_SHORT).show()
                 } else if (groundedRangeBad) {
                     Toast.makeText(context, if (saveGrounded) "\"Until\" date cannot be before the \"Grounded from\" date" else "End date cannot be before the start date", Toast.LENGTH_LONG).show()
                 } else if (activeRecordType == "Flight" && dutyType != "Day Off" && (!isValidTime(dutyOnTime) || !isValidTime(dutyOffTime))) {
                     Toast.makeText(context, "Times must be valid 4-digit HHMM", Toast.LENGTH_LONG).show()
                 } else {
-                    var calculatedTrainingDuty = ""
-                    var finalEndDate = endDate
-                    if (activeRecordType == "Training") {
-                        try {
-                            val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.US)
-                            val start = sdf.parse(flightDate)
-                            val end = if (endDate.isNotBlank()) sdf.parse(endDate) else start
-                            if (start != null && end != null) {
-                                val diffInMillis = end.time - start.time
-                                val days = TimeUnit.MILLISECONDS.toDays(diffInMillis).toInt() + 1
-                                val totalMins = 1.coerceAtLeast(days) * 8 * 60
-                                calculatedTrainingDuty = String.format("%02d%02d", totalMins / 60, totalMins % 60)
-                                if (endDate.isBlank()) finalEndDate = flightDate
-                            }
-                        } catch (_: Exception) {
-                            calculatedTrainingDuty = "0800"
-                        }
-                    }
-
-                    // A flying day saves one record per sector; everything else (incl. Day Off) is one record.
-                    val isFlyingDay = activeRecordType == "Flight" && dutyType != "Day Off"
-                    val sectorsToSave = if (isFlyingDay) sectors.toList() else sectors.take(1)
-                    val toSave = mutableListOf<FlightLog>()
-                    sectorsToSave.forEachIndexed { index, sec ->
-
-                        val savedRecordType = if (activeRecordType == "Flight" && dutyType == "Day Off") "Day Off" else activeRecordType
-                        val savedFlightNo = if (activeRecordType == "Flight" && dutyType == "Day Off") "DAY OFF" else if (activeRecordType == "Flight") sec.flightNo else ""
-
-                        val newLog = FlightLog(
-                            id = sec.id,
-                            recordType = savedRecordType,
-                            trainingType = if (activeRecordType == "Training") trainingType else if (saveGrounded) "Grounded" else "",
-                            expiryDate = if (saveGrounded) "" else if (activeRecordType == "Training" || activeRecordType == "Health Card" || activeRecordType == "Sick") expiryDate else "",
-                            logbookNumber = if (activeRecordType == "Flight" && dutyType != "Day Off") logbookNumber else "",
-                            flightNo = savedFlightNo,
-                            aircraftReg = if (activeRecordType == "Flight" && dutyType != "Day Off") aircraftReg else "",
-                            departure = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.departure else "",
-                            arrival = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.arrival else "",
-                            dutyType = if (activeRecordType == "Flight") dutyType else if (saveGrounded) groundReason.trim() else "",
-                            flightDate = flightDate,
-                            dutyOn = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") dutyOnTime else "",
-                            dutyOff = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") dutyOffTime else if (activeRecordType == "Training") finalEndDate else if (saveGrounded) endDate else "",
-                            totalDuty = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") totalDutyTime else if (activeRecordType == "Training") calculatedTrainingDuty else "",
-                            blockOff = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.blockOff else "",
-                            blockOn = if (activeRecordType == "Flight" && dutyType != "Day Off") sec.blockOn else "",
-                            totalBlock = if (activeRecordType == "Flight" && dutyType != "Day Off") normalizeTimeStr(sec.totalBlock) else "",
-                            crewNames = if (activeRecordType == "Flight" && dutyType != "Day Off") crewNames else "",
-                            notes = if (isFlyingDay && sectorsToSave.size > 1) "$notes (Sector ${index + 1} of ${sectorsToSave.size})".trim() else notes.trim(),
-                            schedDep = if (activeRecordType == "Flight" && index == 0 && dutyType != "Day Off") sec.schedDep else ""
-                        )
-                        toSave += newLog
-                    }
-
-                    // Records of the original entry that are no longer part of it (removed sectors,
-                    // or extra sectors when a flying day becomes a Day Off / another record type).
-                    val keptIds = toSave.map { it.id }.filter { it != 0 }.toSet()
-                    val deleteIds = vm.logsBeingEdited.orEmpty().map { it.id }.filter { it !in keptIds }
-                    vm.saveEntries(toSave, deleteIds)
-
-
-                    Toast.makeText(context, if (vm.logsBeingEdited != null) "Updated!" else "Saved!", Toast.LENGTH_SHORT).show()
-                    vm.logsBeingEdited = null
-                    onSaveSuccess(activeRecordType)
+                    // Things that are probably typos: ask before saving, but allow it.
+                    val warnings = if (activeRecordType == "Flight" && dutyType != "Day Off") flightWarnings() else emptyList()
+                    if (warnings.isEmpty()) doSave() else pendingWarnings = warnings
                 }
             },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).height(52.dp),
@@ -761,4 +900,16 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
             Text(if (vm.logsBeingEdited != null) "Update entry" else "Save entry", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
+}
+
+/** "BG202 LHR→ZYL→DAC" or "BG147/148 DAC→DXB→DAC" for the recent-trips chips. */
+private fun tripLabel(trip: List<ChainedSector>): String {
+    val numbers = trip.map { it.flightNo }.filter { it.isNotBlank() }.distinct()
+    val flights = when {
+        numbers.isEmpty() -> ""
+        numbers.all { it.startsWith("BG") } -> "BG" + numbers.joinToString("/") { it.removePrefix("BG") }
+        else -> numbers.joinToString("/")
+    }
+    val route = (listOf(trip.first().departure) + trip.map { it.arrival }).joinToString("→")
+    return listOf(flights, route).filter { it.isNotBlank() }.joinToString(" ")
 }

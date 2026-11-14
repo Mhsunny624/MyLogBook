@@ -289,6 +289,7 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
                         }
                         "Health Card" -> if (log.trainingType == "Grounded") "⛔ Grounded" else "🏥 Health Card"
                         "Sick" -> "🤒 Sick Leave"
+                        "Document" -> if (log.trainingType == "Crew ID") "🪪 Crew ID" else "🛂 Passport"
                         else -> log.recordType
                     }
                     Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {

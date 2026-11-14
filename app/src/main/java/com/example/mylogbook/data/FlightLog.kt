@@ -20,6 +20,8 @@ import androidx.room.PrimaryKey
  * |   (Grounded)  | trainingType = "Grounded", flightDate = from, dutyOff = until (blank while   |
  * |               | still grounded), dutyType = reason, expiryDate = "" (no expiry alerts).      |
  * | "Sick"        | expiryDate = cleared-for-duty date.                                         |
+ * | "Document"    | trainingType = "Passport" or "Crew ID", expiryDate = expiry, flightDate =   |
+ * |               | the day it was added. Shown under Records only (not in the logbook).        |
  *
  * Changing this class changes the database schema: bump the version in [AppDatabase] and add a
  * Migration in Migrations.kt, otherwise the app will refuse to open existing user data.

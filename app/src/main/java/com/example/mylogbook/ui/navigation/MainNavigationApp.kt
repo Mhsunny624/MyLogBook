@@ -158,8 +158,8 @@ fun MainNavigationApp(
                     )
                     1 -> RecordsScreen(
                         vm = vm,
-                        title = "Training & Health Records",
-                        allowedTypes = listOf("Training", "Health Card"),
+                        title = "Training, Health & Documents",
+                        allowedTypes = listOf("Training", "Health Card", "Document"),
                         onEditClicked = { isAddOverlayVisible = true }
                     )
                     2 -> TimeCalculatorScreen()
@@ -188,7 +188,7 @@ fun MainNavigationApp(
                     FlightEntryScreen(
                         onSaveSuccess = { savedRecordType ->
                             isAddOverlayVisible = false
-                            val targetPage = if (savedRecordType == "Training" || savedRecordType == "Health Card") 1 else 0
+                            val targetPage = if (savedRecordType in listOf("Training", "Health Card", "Document")) 1 else 0
                             coroutineScope.launch { pagerState.animateScrollToPage(targetPage) }
                         },
                         vm = vm

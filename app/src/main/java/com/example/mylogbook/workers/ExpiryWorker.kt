@@ -37,15 +37,19 @@ class ExpiryWorker(appContext: Context, workerParams: WorkerParameters) :
             // Whole calendar days from today to the expiry date (both at local midnight).
             val days = Math.round((expDate.time - today.timeInMillis) / 86_400_000.0).toInt()
 
-            // A heads-up at 30 days, then every day from 7 days down to the day itself.
-            if (days != 30 && days !in 0..7) return@forEach
-            val whenText = when (days) { 0 -> "today"; 1 -> "tomorrow"; else -> "in $days days" }
+            // A heads-up at 30 days (passport: 6, 3 and 1 months), then every day from 7 days to the day itself.
+            val isPassport = record.recordType == "Document" && record.trainingType != "Crew ID"
+            val headsUp = if (isPassport) setOf(180, 90, 30) else setOf(30)
+            if (days !in headsUp && days !in 0..7) return@forEach
+            val whenText = when (days) { 0 -> "today"; 1 -> "tomorrow"; 180 -> "in 6 months"; 90 -> "in 3 months"; else -> "in $days days" }
             val (title, message) = when (record.recordType) {
                 "Training" -> "Training expiring" to "Your ${record.trainingType.ifBlank { "training" }} expires $whenText (${record.expiryDate})."
                 "Sick" -> {
                     if (days > 1) return@forEach   // only remind the day before and on the day
                     "Sick leave ending" to "You are cleared for duty $whenText (${record.expiryDate})."
                 }
+                "Document" -> if (isPassport) "Passport expiring" to "Your passport expires $whenText (${record.expiryDate}). Many countries need 6 months' validity."
+                              else "Crew ID expiring" to "Your crew ID expires $whenText (${record.expiryDate})."
                 else -> "Health card expiring" to "Your health card expires $whenText (${record.expiryDate})."
             }
             showNotification(record.id, title, message)

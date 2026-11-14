@@ -15,7 +15,7 @@ interface FlightLogDao {
     @Query("SELECT * FROM flight_logs ORDER BY id ASC")
     suspend fun getAllLogsOnce(): List<FlightLog>
 
-    @Query("SELECT * FROM flight_logs WHERE recordType IN ('Training', 'Health Card', 'Sick')")
+    @Query("SELECT * FROM flight_logs WHERE recordType IN ('Training', 'Health Card', 'Sick', 'Document')")
     suspend fun getExpiringRecords(): List<FlightLog>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

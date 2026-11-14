@@ -75,6 +75,7 @@ object PdfExporter {
             // flightDate is "dd/MM/yyyy": compare the month and year parts exactly
             // (a plain "contains" would also match the day, e.g. day 11 for month 11).
             val filteredLogs = logs.filter {
+                if (it.recordType == "Document") return@filter false   // passports / crew IDs are not duty
                 val parts = it.flightDate.split("/")
                 parts.size == 3 && parts[1] == month.padStart(2, '0') && parts[2] == year
             }.sortedWith(compareBy(
