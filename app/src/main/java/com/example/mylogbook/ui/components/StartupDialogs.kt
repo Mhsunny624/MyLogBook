@@ -1,10 +1,9 @@
 /*
  * Dialogs shown at start-up: a one-time welcome notice (unofficial app, estimates only) and an
- * "Update available" prompt when GitHub has a newer release.
+ * "Update available" prompt (in-app download, see UpdateUi.kt) when GitHub has a newer release.
  */
 package com.example.mylogbook.ui.components
 
-import android.content.Intent
 import android.content.SharedPreferences
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,26 +16,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
-import androidx.core.net.toUri
-import com.example.mylogbook.BuildConfig
-import com.example.mylogbook.data.update.ReleaseInfo
-import com.example.mylogbook.data.update.UpdateChecker
 
 private const val KEY_WELCOME_SEEN = "welcome_seen_v1"
 
 @Composable
 fun StartupDialogs(prefs: SharedPreferences) {
     var showWelcome by remember { mutableStateOf(!prefs.getBoolean(KEY_WELCOME_SEEN, false)) }
-    var update by remember { mutableStateOf<ReleaseInfo?>(null) }
+    val updates = rememberUpdateFlow()
 
-    LaunchedEffect(Unit) {
-        update = UpdateChecker.checkForUpdate(prefs, BuildConfig.VERSION_NAME)
-    }
+    LaunchedEffect(Unit) { updates.checkQuietly(prefs) }
 
     if (showWelcome) {
         WelcomeNoticeDialog(onDismiss = {
@@ -44,7 +36,7 @@ fun StartupDialogs(prefs: SharedPreferences) {
             showWelcome = false
         })
     } else {
-        update?.let { UpdateAvailableDialog(it, onDismiss = { update = null }) }
+        UpdateAvailableDialog(updates)
     }
 }
 
@@ -63,28 +55,5 @@ fun WelcomeNoticeDialog(onDismiss: () -> Unit) {
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("I understand") } }
-    )
-}
-
-@Composable
-fun UpdateAvailableDialog(release: ReleaseInfo, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Update available") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Version ${release.version} is out (you have ${BuildConfig.VERSION_NAME}).")
-                Text("Download the new APK and install it over this one. Your entries are kept.", fontSize = 13.sp)
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val url = release.apkUrl ?: release.pageUrl
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
-                onDismiss()
-            }) { Text("Download") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Later") } }
     )
 }

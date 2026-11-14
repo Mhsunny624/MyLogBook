@@ -22,7 +22,7 @@ Get the latest APK from **[Releases](https://github.com/Mhsunny624/MyLogBook/rel
 2. If asked, allow your browser or file manager to **install unknown apps**.
 3. Open the app, then go to **Settings**: enter your profile and **Pay Settings** (crew type, joining date, basic salary), and turn on **Auto Backup**.
 
-The app checks for new releases when it opens and shows **Update available** with a download link. New versions install over the old one and keep your entries.
+The app checks for new releases when it opens, and **Settings → About** shows your version with a **Check for updates** button. **Update now** downloads the new version inside the app; Android then asks you to tap **Update** (the first time it also asks you to allow MyLogBook to install apps). Your entries are kept.
 
 ## Features
 

@@ -54,7 +54,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.example.mylogbook.BuildConfig
 import com.example.mylogbook.data.FlightLog
+import com.example.mylogbook.ui.components.UpdateStatus
+import com.example.mylogbook.ui.components.rememberUpdateFlow
 import com.example.mylogbook.data.backup.AutoBackup
 import com.example.mylogbook.data.backup.BackupJson
 import com.example.mylogbook.export.PdfExporter
@@ -409,6 +412,20 @@ fun SettingsScreen(
                 ) {
                     Text("Send Test Expiry Notification Now")
                 }
+            }
+        }
+
+        // --- ABOUT: version and updates ---
+        val updates = rememberUpdateFlow()
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("About", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("MyLogBook ${BuildConfig.VERSION_NAME}", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("Not an official Biman Bangladesh Airlines app. Pay and rest figures are estimates.", fontSize = 12.sp, color = Color.Gray)
+                UpdateStatus(updates, showCheckButton = true)
             }
         }
     }
