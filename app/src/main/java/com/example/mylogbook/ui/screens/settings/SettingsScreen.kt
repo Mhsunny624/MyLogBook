@@ -403,9 +403,15 @@ fun SettingsScreen(
 
                 OutlinedButton(
                     onClick = {
-                        val testRequest = OneTimeWorkRequestBuilder<ExpiryWorker>().build()
-                        WorkManager.getInstance(context).enqueue(testRequest)
-                        Toast.makeText(context, "Running expiry check — watch for a notification", Toast.LENGTH_SHORT).show()
+                        if (!androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                            Toast.makeText(context, "Notifications are turned off for MyLogBook. Turn them on in Android settings.", Toast.LENGTH_LONG).show()
+                        } else {
+                            val testRequest = OneTimeWorkRequestBuilder<ExpiryWorker>()
+                                .setInputData(androidx.work.workDataOf(ExpiryWorker.KEY_TEST to true))
+                                .build()
+                            WorkManager.getInstance(context).enqueue(testRequest)
+                            Toast.makeText(context, "Sending a test notification…", Toast.LENGTH_SHORT).show()
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(8.dp)

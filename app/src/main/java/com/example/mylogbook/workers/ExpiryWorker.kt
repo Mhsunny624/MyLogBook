@@ -31,6 +31,10 @@ class ExpiryWorker(appContext: Context, workerParams: WorkerParameters) :
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }
 
+        val isTest = inputData.getBoolean(KEY_TEST, false)
+        var nextLabel: String? = null
+        var nextDays = Int.MAX_VALUE
+
         records.forEach { record ->
             if (record.expiryDate.isBlank()) return@forEach
             val expDate = try { sdf.parse(record.expiryDate) } catch (_: Exception) { null } ?: return@forEach
@@ -39,6 +43,14 @@ class ExpiryWorker(appContext: Context, workerParams: WorkerParameters) :
 
             // A heads-up at 30 days (passport: 6, 3 and 1 months), then every day from 7 days to the day itself.
             val isPassport = record.recordType == "Document" && record.trainingType != "Crew ID"
+            if (days in 0 until nextDays && record.recordType != "Sick") {
+                nextDays = days
+                nextLabel = when (record.recordType) {
+                    "Training" -> record.trainingType.ifBlank { "Training" }
+                    "Document" -> if (isPassport) "Passport" else "Crew ID"
+                    else -> "Health card"
+                } + " expires " + (if (days == 0) "today" else if (days == 1) "tomorrow" else "in $days days") + " (${record.expiryDate})."
+            }
             val headsUp = if (isPassport) setOf(180, 90, 30) else setOf(30)
             if (days !in headsUp && days !in 0..7) return@forEach
             val whenText = when (days) { 0 -> "today"; 1 -> "tomorrow"; 180 -> "in 6 months"; 90 -> "in 3 months"; else -> "in $days days" }
@@ -54,7 +66,22 @@ class ExpiryWorker(appContext: Context, workerParams: WorkerParameters) :
             }
             showNotification(record.id, title, message)
         }
+
+        // The Settings test button always shows one notification, so the user can see reminders work
+        // even when nothing is due today.
+        if (isTest) {
+            showNotification(
+                TEST_NOTIFICATION_ID,
+                "Test: expiry reminders are working",
+                nextLabel?.let { "Next: $it" } ?: "No upcoming expiry dates are saved."
+            )
+        }
         return Result.success()
+    }
+
+    companion object {
+        const val KEY_TEST = "test"
+        private const val TEST_NOTIFICATION_ID = 999_999
     }
 
     private fun showNotification(id: Int, title: String, message: String) {
