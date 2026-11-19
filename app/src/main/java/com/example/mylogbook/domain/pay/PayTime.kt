@@ -1,6 +1,6 @@
 /*
- * Time constants and date helpers shared by the pay calculations (UTC storage, Bangladesh
- * time month boundaries).
+ * Time constants and date helpers shared by the pay calculations. Times are stored in UTC and
+ * allowance months also run 00:00 UTC to 00:00 UTC (Biman payroll rule).
  */
 package com.example.mylogbook.domain.pay
 
@@ -25,9 +25,9 @@ fun parseDayUtc(date: String): Long? = try {
         .parse(date.trim())?.time
 } catch (_: Exception) { null }
 
-/** [start, end) of a calendar month in Bangladesh time, as epoch millis. */
-fun monthBoundsBd(year: Int, month0: Int): Pair<Long, Long> {
-    val cal = Calendar.getInstance(BD).apply { clear(); set(year, month0, 1, 0, 0, 0) }
+/** [start, end) of a calendar month in UTC, as epoch millis. Allowance months split at 00:00 UTC. */
+fun monthBoundsUtc(year: Int, month0: Int): Pair<Long, Long> {
+    val cal = Calendar.getInstance(UTC).apply { clear(); set(year, month0, 1, 0, 0, 0) }
     val start = cal.timeInMillis
     cal.add(Calendar.MONTH, 1)
     return start to cal.timeInMillis

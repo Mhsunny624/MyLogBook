@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * Pay rules checked with made-up logbook entries (year 2030, fictional data).
  * Expected values are worked out by hand from the rules in docs/RULES.md.
- * Bangladesh time (BST) = UTC + 6.
+ * Allowance months split at 00:00 UTC.
  */
 class PayCalculatorTest {
 
@@ -28,7 +28,7 @@ class PayCalculatorTest {
     )
 
     // Trip 1: away 02/03 10:00Z -> 03/03 14:00Z = 28 h, all in March.
-    // Trip 2: away 31/03 12:00Z (18:00 BST) -> 01/04 12:00Z (18:00 BST) = 6 h in March + 18 h in April.
+    // Trip 2: away 31/03 12:00Z -> 01/04 12:00Z = 12 h in March + 12 h in April (split at 00:00 UTC).
     private val logs = listOf(
         sector(1, "02/03/2030", "DAC", "DXB", "1000", "1430", "0430"),
         sector(2, "03/03/2030", "DXB", "DAC", "1000", "1400", "0400"),
@@ -60,32 +60,32 @@ class PayCalculatorTest {
     }
 
     @Test
-    fun incidental_isHoursAway_splitAtBangladeshMidnight() {
+    fun incidental_isHoursAway_splitAtUtcMidnight() {
         val trips = buildTrips(logs, "DAC").trips
         assertEquals(2, trips.size)
         val march = incidentalForMonth(trips, 2030, 2, 12.0)
         assertEquals(2, march.trips)
-        assertEquals(34 * 60L, march.minutes)          // 28 h + 6 h
-        assertEquals(17.0, march.usd, 0.001)           // 34 / 24 x 12
+        assertEquals(40 * 60L, march.minutes)          // 28 h + 12 h
+        assertEquals(20.0, march.usd, 0.001)           // 40 / 24 x 12
         val april = incidentalForMonth(trips, 2030, 3, 12.0)
-        assertEquals(9.0, april.usd, 0.001)            // 18 / 24 x 12
+        assertEquals(6.0, april.usd, 0.001)            // 12 / 24 x 12
     }
 
     @Test
     fun usd_aboveSeventyHours_addsHourlyRate_andPreviousIncidental() {
         val usd = estimateUsd(logs, "DAC", 2030, 3, 75 * 60, rates())
         assertEquals(1605.0, usd.overseas, 0.001)      // 1500 + 5 x 21
-        assertEquals(17.0, usd.previousIncidental.usd, 0.001)
-        assertEquals(1622.0, usd.total, 0.001)
-        assertEquals(1622.0, usd.rounded, 0.001)       // no rounding by default
+        assertEquals(20.0, usd.previousIncidental.usd, 0.001)
+        assertEquals(1625.0, usd.total, 0.001)
+        assertEquals(1625.0, usd.rounded, 0.001)       // no rounding by default
     }
 
     @Test
     fun usd_belowSeventyHours_deductsHourlyRate() {
         val usd = estimateUsd(logs, "DAC", 2030, 4, 60 * 60 + 30, rates())
         assertEquals(1300.5, usd.overseas, 0.001)      // 1500 - 9.5 x 21
-        assertEquals(1309.5, usd.total, 0.001)         // + April incidental 9.00
-        assertEquals(1309.5, usd.rounded, 0.001)
+        assertEquals(1306.5, usd.total, 0.001)         // + April incidental 6.00
+        assertEquals(1306.5, usd.rounded, 0.001)
     }
 
     @Test
@@ -118,5 +118,35 @@ class PayCalculatorTest {
         val ongoing = listOf(grounded(901, "01/11/2030", ""))
         assertEquals(12, groundedDaysInMonth(ongoing, 2030, 10, today))
         assertEquals(0, groundedDaysInMonth(ongoing, 2030, 11, today))
+    }
+
+    @Test
+    fun shuttle_sameDayOutAndBack_earnsNoIncidental() {
+        val withShuttle = logs + listOf(
+            // Out and back on one duty (same logbook day): a shuttle.
+            sector(20, "10/03/2030", "DAC", "SHJ", "0300", "0800", "0500"),
+            sector(21, "10/03/2030", "SHJ", "DAC", "0930", "1430", "0500")
+        )
+        val trips = buildTrips(withShuttle, "DAC").trips
+        assertEquals(1, trips.count { it.shuttle })
+        val march = incidentalForMonth(trips, 2030, 2, 12.0)
+        assertEquals(2, march.trips)                   // the two layover trips only
+        assertEquals(1, march.shuttles)
+        assertEquals(20.0, march.usd, 0.001)           // unchanged by the shuttle
+    }
+
+    @Test
+    fun flyingHours_splitAtUtcMidnight_andMonthEndFlightWithoutTimesIsFlagged() {
+        // 31/10 21:50Z -> 01/11 06:20Z: 2:10 in October, 6:20 in November.
+        val bounds = monthBoundsUtc(2030, 9)
+        val off = parseDayUtc("31/10/2030")!! + (21 * 60 + 50) * MIN_MS
+        assertEquals(130L, (bounds.second - off) / MIN_MS)
+
+        val noTimes = listOf(sector(30, "31/10/2030", "YYZ", "FCO", "", "", "0830"))
+        assertEquals(1, monthEndFlightsMissingTimes(noTimes, 2030, 9))   // October: its own last day
+        assertEquals(1, monthEndFlightsMissingTimes(noTimes, 2030, 10))  // November: previous month's last day
+        assertEquals(0, monthEndFlightsMissingTimes(noTimes, 2030, 8))
+        val withTimes = listOf(sector(31, "31/10/2030", "YYZ", "FCO", "2150", "0620", "0830"))
+        assertEquals(0, monthEndFlightsMissingTimes(withTimes, 2030, 9))
     }
 }
