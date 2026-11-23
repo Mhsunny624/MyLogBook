@@ -50,7 +50,7 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
     val claimOffInfo = remember(dailyLogs, allLogs, homeBase) { calculateClaimOffForDay(dailyLogs, allLogs, homeBase) }
 
     val sdfUtc = SimpleDateFormat("dd/MM/yyyy", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-    val bstZone = java.util.TimeZone.getTimeZone("Asia/Dhaka")
+    val monthZone = java.util.TimeZone.getTimeZone("UTC")  // month split only; rest times stay in BST (RestRules.kt)
     val baseMonthsList = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
     val monthMinsMap = mutableMapOf<String, Int>()
 
@@ -61,8 +61,8 @@ fun DailyLogCard(date: String, dailyLogs: List<FlightLog>, allLogs: List<FlightL
 
         val start = blockStarts[log.id]
         if (start != null && isClockTime(log.blockOff) && durMinsBlock > 0) {
-            val calDepBd = Calendar.getInstance(bstZone).apply { timeInMillis = start }
-            val calArrBd = Calendar.getInstance(bstZone).apply {
+            val calDepBd = Calendar.getInstance(monthZone).apply { timeInMillis = start }
+            val calArrBd = Calendar.getInstance(monthZone).apply {
                 timeInMillis = calDepBd.timeInMillis
                 add(Calendar.MINUTE, durMinsBlock)
             }

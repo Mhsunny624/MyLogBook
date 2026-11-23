@@ -29,6 +29,7 @@ import com.example.mylogbook.domain.duty.blockOffInstants
 import com.example.mylogbook.domain.duty.dutyOnInstant
 import com.example.mylogbook.domain.duty.getMinsFromTimeString
 import com.example.mylogbook.domain.pay.groundedDaysInMonth
+import com.example.mylogbook.domain.pay.sectorBlockOffs
 import com.example.mylogbook.ui.components.DailyLogCard
 import com.example.mylogbook.ui.components.MonthlySummaryCard
 import com.example.mylogbook.ui.components.PayEstimateSection
@@ -117,11 +118,14 @@ fun LogbookScreen(
     val displayedFlightDates = mutableSetOf<String>()
 
     val sdfUtc = SimpleDateFormat("dd/MM/yyyy", Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-    val bstZone = java.util.TimeZone.getTimeZone("Asia/Dhaka")
+    // Allowance months run 00:00 UTC to 00:00 UTC (Biman payroll rule), so every month split here is in UTC.
+    val monthZone = java.util.TimeZone.getTimeZone("UTC")
 
     // Real block-off instants (later sectors after UTC midnight roll to the next day) and each
     // day's first sector (decides whether Duty On was on the previous UTC day).
     val blockStarts = remember(logs) { blockOffInstants(logs) }
+    // Sectors without a Block off: estimated from Duty On, so the month split still has a start time.
+    val estimatedStarts = remember(logs, homeBase) { sectorBlockOffs(logs, homeBase) }
     val firstSectorByDate = remember(logs) {
         logs.filter { it.recordType == "Flight" }.groupBy { it.flightDate }.mapValues { (_, g) -> g.minBy { it.id } }
     }
@@ -129,7 +133,7 @@ fun LogbookScreen(
     logs.forEach { log ->
         val depDate = try { sdfUtc.parse(log.flightDate) } catch (_: Exception) { null }
         if (depDate != null) {
-            val calDepBd = Calendar.getInstance(bstZone).apply { time = depDate }
+            val calDepBd = Calendar.getInstance(monthZone).apply { time = depDate }
             val depMonthIdx = calDepBd.get(Calendar.MONTH)
             val depMonthStr = baseMonthsList[depMonthIdx]
             val depYearStr = calDepBd.get(Calendar.YEAR).toString()
@@ -140,8 +144,8 @@ fun LogbookScreen(
             if (log.recordType == "Flight") {
                 val durMinsBlock = getMinsFromTimeString(log.totalBlock)
 
-                val calDepTimeBd = Calendar.getInstance(bstZone).apply {
-                    timeInMillis = blockStarts[log.id] ?: depDate.time
+                val calDepTimeBd = Calendar.getInstance(monthZone).apply {
+                    timeInMillis = blockStarts[log.id] ?: estimatedStarts[log.id] ?: depDate.time
                 }
 
                 val calArrBd = calDepTimeBd.clone() as Calendar
@@ -185,7 +189,7 @@ fun LogbookScreen(
                 val durMinsDuty = getMinsFromTimeString(log.totalDuty)
                 val dutyOnAt = if (durMinsDuty > 0) dutyOnInstant(depDate.time, log.dutyOn, firstSectorByDate[log.flightDate]) else null
                 if (dutyOnAt != null) {
-                    val calOnBd = Calendar.getInstance(bstZone).apply { timeInMillis = dutyOnAt }
+                    val calOnBd = Calendar.getInstance(monthZone).apply { timeInMillis = dutyOnAt }
 
                     val calOffBd = calOnBd.clone() as Calendar
                     calOffBd.add(Calendar.MINUTE, durMinsDuty)
@@ -270,7 +274,7 @@ fun LogbookScreen(
     val groupedLogs = sortedDisplayLogs.groupBy { log ->
         try {
             val date = sdfUtc.parse(log.flightDate)
-            val cal = Calendar.getInstance(bstZone).apply { time = date ?: Date() }
+            val cal = Calendar.getInstance(monthZone).apply { time = date ?: Date() }
             val monthIndex = cal.get(Calendar.MONTH)
             val monthStr = baseMonthsList[monthIndex]
             val monthName = fullMonths[monthStr] ?: monthStr
@@ -506,7 +510,7 @@ fun LogbookScreen(
                         item {
                             Column {
                                 Text(summaryTitle, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text("Calculated in Bangladesh Local Time (UTC+6) for precise monthly payroll boundary splits.", fontSize = 12.sp, color = Color.Gray, lineHeight = 16.sp, modifier = Modifier.padding(top = 4.dp))
+                                Text("Months split at 00:00 UTC, as on the Biman payroll.", fontSize = 12.sp, color = Color.Gray, lineHeight = 16.sp, modifier = Modifier.padding(top = 4.dp))
                             }
                         }
 

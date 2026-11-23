@@ -9,14 +9,18 @@ import com.example.mylogbook.domain.duty.dutyOnInstant
 import com.example.mylogbook.domain.duty.getMinsFromTimeString
 import com.example.mylogbook.domain.duty.isValidTime
 
-/** One rotation away from base: Block Off at base -> Block On back at base (epoch millis, UTC). */
-data class Trip(val start: Long, val end: Long, val estimated: Boolean) {
+/**
+ * One rotation away from base: Block Off at base -> Block On back at base (epoch millis, UTC).
+ * [shuttle] = out and back on the same duty (same logbook day, no layover); shuttles earn no incidental.
+ */
+data class Trip(val start: Long, val end: Long, val estimated: Boolean, val shuttle: Boolean = false) {
     val durationMs: Long get() = end - start
 }
 
 data class TripScan(val trips: List<Trip>, val incompleteDays: List<Long>)
 
 private data class SectorTimes(
+    val id: Int,
     val dep: String, val arr: String, val day: Long,
     val off: Long?, val on: Long?, val offEstimated: Boolean, val onEstimated: Boolean
 )
@@ -87,14 +91,17 @@ private fun sectorTimes(logs: List<FlightLog>, homeBase: String): List<SectorTim
             }
             if (off == null && on != null && blockMs > 0) { off = on - blockMs; offEst = onEst }
 
-            result += SectorTimes(dep, arr, day, off, on, offEst, onEst)
+            result += SectorTimes(s.id, dep, arr, day, off, on, offEst, onEst)
             cursor = on ?: off ?: cursor
         }
     }
     return result
 }
 
-/** Every rotation that leaves base and returns to base, including same-day turnarounds. */
+/**
+ * Every rotation that leaves base and returns to base. A rotation whose outbound and return
+ * sectors are in the same logbook day (one duty, no layover) is marked as a shuttle.
+ */
 fun buildTrips(logs: List<FlightLog>, homeBase: String): TripScan {
     val base = homeBase.uppercase()
     val trips = mutableListOf<Trip>()
@@ -113,7 +120,7 @@ fun buildTrips(logs: List<FlightLog>, homeBase: String): TripScan {
             val start = openStart
             val end = s.on
             if (start != null && end != null && end > start) {
-                trips += Trip(start, end, openEst || s.onEstimated)
+                trips += Trip(start, end, openEst || s.onEstimated, shuttle = openDay == s.day)
             } else {
                 incomplete += s.day
             }
@@ -122,3 +129,10 @@ fun buildTrips(logs: List<FlightLog>, homeBase: String): TripScan {
     }
     return TripScan(trips, incomplete)
 }
+
+/**
+ * Block Off instant of every flight sector (real or estimated from the duty times), keyed by log
+ * id. Used to split flying hours at the month boundary when a sector has no Block off entered.
+ */
+fun sectorBlockOffs(logs: List<FlightLog>, homeBase: String): Map<Int, Long> =
+    sectorTimes(logs, homeBase).mapNotNull { s -> s.off?.let { s.id to it } }.toMap()

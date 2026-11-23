@@ -142,6 +142,7 @@ private fun UsdPayCard(e: UsdEstimate, month0: Int, groundedDays: Int = 0) {
         val incidentalDetail = buildString {
             append("${hm(prev.minutes)} away from base ÷ 24 × USD 12 per day")
             append(" • ${prev.trips} trip${if (prev.trips == 1) "" else "s"}")
+            if (prev.shuttles > 0) append(" (+${prev.shuttles} shuttle${if (prev.shuttles == 1) "" else "s"}, not counted)")
             if (prev.estimated) append("\nSome block times estimated from duty times")
         }
         PayLine("Incidental ($prevMonth)", money(prev.usd), incidentalDetail)
@@ -152,7 +153,8 @@ private fun UsdPayCard(e: UsdEstimate, month0: Int, groundedDays: Int = 0) {
         PayLine(
             "$month incidental so far",
             money(cur.usd),
-            "${hm(cur.minutes)} away • paid with the $nextMonth statement"
+            "${hm(cur.minutes)} away • paid with the $nextMonth statement" +
+                if (cur.shuttles > 0) "\n${cur.shuttles} shuttle${if (cur.shuttles == 1) "" else "s"} not counted" else ""
         )
 
         if (diffMins < 0 && groundedDays > 0) {
@@ -163,6 +165,9 @@ private fun UsdPayCard(e: UsdEstimate, month0: Int, groundedDays: Int = 0) {
         }
         if (e.incompleteTrips > 0) {
             PayNote("${e.incompleteTrips} trip${if (e.incompleteTrips == 1) "" else "s"} missing departure or return times - not counted in incidental.")
+        }
+        if (e.monthEndMissingTimes > 0) {
+            PayNote("${e.monthEndMissingTimes} flight${if (e.monthEndMissingTimes == 1) "" else "s"} on the last day of a month ${if (e.monthEndMissingTimes == 1) "has" else "have"} no Block off / Block on. Add them so the hours are split correctly at 00:00 UTC.")
         }
         PayNote("Estimate based on Biman Admin Orders 17/2018 and 17/2023. Rates can be changed in Settings → Pay Settings.")
     }
@@ -212,7 +217,7 @@ private fun HoursProgressCard(e: UsdEstimate, year: Int, month0: Int) {
     val targetMins = (e.minHours - e.waiverHours).coerceAtLeast(0) * 60
     val flown = e.flyMins
     val reached = flown >= targetMins
-    val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Dhaka"))
+    val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
     val isCurrentMonth = now.get(java.util.Calendar.YEAR) == year && now.get(java.util.Calendar.MONTH) == month0
     val daysLeft = if (isCurrentMonth) now.getActualMaximum(java.util.Calendar.DAY_OF_MONTH) - now.get(java.util.Calendar.DAY_OF_MONTH) else 0
     // A finished month that fell short is shown as a shortfall, not "to go".
@@ -267,7 +272,7 @@ fun YearAllowanceTable(logs: List<FlightLog>, homeBase: String, year: Int, month
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("FlightLogPrefs", Context.MODE_PRIVATE) }
     val rates = loadPayRates(prefs)
-    val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Dhaka"))
+    val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
     val lastMonth = when {
         year < now.get(java.util.Calendar.YEAR) -> 11
         year == now.get(java.util.Calendar.YEAR) -> now.get(java.util.Calendar.MONTH)

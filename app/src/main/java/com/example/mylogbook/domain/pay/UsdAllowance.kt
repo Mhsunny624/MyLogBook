@@ -32,27 +32,35 @@ fun overseasRate(rates: PayRates, year: Int, month0: Int): OverseasRate {
     )
 }
 
-data class IncidentalResult(val minutes: Long, val usd: Double, val trips: Int, val estimated: Boolean)
+data class IncidentalResult(
+    val minutes: Long, val usd: Double, val trips: Int, val estimated: Boolean, val shuttles: Int = 0
+)
 
-/** Incidental earned in one month: time away overlapping that month (split at BD midnight). */
+/**
+ * Incidental earned in one month: time away overlapping that month (split at 00:00 UTC).
+ * Shuttle trips (out and back on the same duty, no layover) earn no incidental; they are only counted.
+ */
 fun incidentalForMonth(trips: List<Trip>, year: Int, month0: Int, perDay: Double): IncidentalResult {
-    val (monthStart, monthEnd) = monthBoundsBd(year, month0)
+    val (monthStart, monthEnd) = monthBoundsUtc(year, month0)
     var awayMs = 0L
     var count = 0
+    var shuttles = 0
     var estimated = false
     trips.forEach { t ->
         val overlap = min(t.end, monthEnd) - max(t.start, monthStart)
-        if (overlap > 0) {
+        if (overlap > 0 && t.shuttle) {
+            shuttles++
+        } else if (overlap > 0) {
             awayMs += overlap; count++
             if (t.estimated) estimated = true
         }
     }
-    return IncidentalResult(awayMs / MIN_MS, awayMs.toDouble() / DAY_MS * perDay, count, estimated)
+    return IncidentalResult(awayMs / MIN_MS, awayMs.toDouble() / DAY_MS * perDay, count, estimated, shuttles)
 }
 
 /** Long stay waiver for a month: > 10 days away in one trip = 20 h, > 5 days = 10 h. */
 fun longStayWaiverHours(trips: List<Trip>, year: Int, month0: Int): Int {
-    val (monthStart, monthEnd) = monthBoundsBd(year, month0)
+    val (monthStart, monthEnd) = monthBoundsUtc(year, month0)
     return trips.filter { it.end in monthStart until monthEnd }.maxOfOrNull {
         when {
             it.durationMs > 10 * DAY_MS -> 20
@@ -73,7 +81,9 @@ data class UsdEstimate(
     val total: Double,
     val rounded: Double,
     val roundStep: Double,
-    val incompleteTrips: Int
+    val incompleteTrips: Int,
+    /** Flights on the last day of a month (this month's or the previous one's) with no Block off/on. */
+    val monthEndMissingTimes: Int = 0
 )
 
 /**
@@ -101,8 +111,33 @@ fun estimateUsd(
     val total = overseas + previous.usd
     val rounded = if (rates.usdRoundStep > 0) ceil(total / rates.usdRoundStep - 1e-9) * rates.usdRoundStep else total
 
-    val (windowStart, windowEnd) = monthBoundsBd(prevYear, prevMonth0).first to monthBoundsBd(year, month0).second
+    val (windowStart, windowEnd) = monthBoundsUtc(prevYear, prevMonth0).first to monthBoundsUtc(year, month0).second
     val incomplete = scan.incompleteDays.count { it in (windowStart - DAY_MS) until windowEnd }
 
-    return UsdEstimate(flyMins, rates.minHours, rate, waiver, overseas, previous, current, total, rounded, rates.usdRoundStep, incomplete)
+    val monthEndMissing = monthEndFlightsMissingTimes(logs, year, month0)
+
+    return UsdEstimate(
+        flyMins, rates.minHours, rate, waiver, overseas, previous, current, total, rounded,
+        rates.usdRoundStep, incomplete, monthEndMissing
+    )
+}
+
+/**
+ * Flight sectors dated the last day of the previous month or of this month that have no valid
+ * Block off and Block on. Without them the app cannot split the flight at 00:00 UTC.
+ */
+fun monthEndFlightsMissingTimes(logs: List<FlightLog>, year: Int, month0: Int): Int {
+    val (monthStart, monthEnd) = monthBoundsUtc(year, month0)
+    val lastDays = setOf(monthStart - DAY_MS, monthEnd - DAY_MS)
+    return logs.count { log ->
+        log.recordType == "Flight" && log.dutyType != "Day Off" &&
+            log.departure.isNotBlank() && log.arrival.isNotBlank() &&
+            parseDayUtc(log.flightDate)?.let { it in lastDays } == true &&
+            !(hasClockTime(log.blockOff) && hasClockTime(log.blockOn))
+    }
+}
+
+private fun hasClockTime(value: String): Boolean {
+    val digits = value.filter { it.isDigit() }
+    return digits.length == 4 && com.example.mylogbook.domain.duty.isValidTime(digits)
 }

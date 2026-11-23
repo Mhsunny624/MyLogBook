@@ -33,7 +33,9 @@ Times are stored in UTC. Bangladesh Standard Time (BST) is UTC+6. Home base is `
 
 ## 4. Block hours across a month end (`ui/screens/logbook/LogbookScreen.kt`)
 
-Monthly block and duty totals use Bangladesh time. A sector flown across midnight at the end of a month is split at BST midnight: the minutes before midnight count in the old month, and the rest count in the **next** month.
+Monthly block and duty totals use **UTC**, as the Biman payroll does. A sector flown across 00:00 UTC at the end of a month is split there: the minutes before midnight count in the old month, and the rest count in the **next** month.
+- If a sector has no Block off, its start is estimated from Duty On (+1:45 at base, +1:15 at an outstation), or the start of its UTC day as a last resort.
+- A flight dated the last day of a month without Block off / Block on cannot be split reliably, so the USD card shows a warning (`monthEndFlightsMissingTimes`).
 
 ## 5. Overseas allowance (USD) (`domain/pay/UsdAllowance.kt`)
 
@@ -56,8 +58,8 @@ Monthly block and duty totals use Bangladesh time. A sector flown across midnigh
 
 - **USD 12 per day away**, prorated on the exact time away: hours away ÷ 24 × 12.
   - A trip runs from block-off at base to block-on back at base.
-  - Every rotation counts, including same-day turnarounds.
-- A trip that crosses a month end is **split at BST midnight** between the two months.
+  - **Shuttles earn no incidental.** A shuttle is a rotation whose outbound and return sectors are in the same logbook day (out and back on one duty, no layover), domestic or international. The card lists how many shuttles were left out (`Trip.shuttle`).
+- A trip that crosses a month end is **split at 00:00 UTC** between the two months.
 - **Missing block times:** they are estimated from the duty times (Duty On + 1:45 / 1:15, Duty Off − 0:45), and the result is marked as estimated.
 - **Paid one month later:** the incidental earned in month M appears on the USD statement of month M+1.
 
