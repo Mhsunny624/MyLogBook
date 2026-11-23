@@ -41,6 +41,7 @@ Monthly block and duty totals use **UTC**, as the Biman payroll does. A sector f
 
 - A monthly amount for **70 flying hours**, plus or minus an hourly rate for each hour above or below 70.
   - Hours are real hours and minutes: 77:21 = 77.35 h.
+  - **Deadhead (DHC) block time is not flying hours:** it is left out of the 70-hour count and of the Taka flying allowance, but still shown in the logbook totals. Time away from base on DHC still counts for incidental, and DHC duty time still counts as duty hours.
   - The allowance is never negative.
 
 | Crew | Monthly (70 h) | Per hour ± |

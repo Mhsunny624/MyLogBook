@@ -55,10 +55,11 @@ private fun plain(v: Double) = if (v % 1.0 == 0.0) String.format(Locale.US, "%,.
 
 /**
  * Pay estimates shown at the top of the $৳ Allowances tab for one month.
- * [flyMins] = that month's block minutes, already split at month ends (Bangladesh time).
+ * [flyMins] = that month's paid flying minutes (DHC left out), already split at 00:00 UTC.
+ * [dhcMins] = deadhead block minutes in the month, shown as a note only.
  */
 @Composable
-fun PayEstimateSection(logs: List<FlightLog>, homeBase: String, year: Int, month0: Int, flyMins: Int) {
+fun PayEstimateSection(logs: List<FlightLog>, homeBase: String, year: Int, month0: Int, flyMins: Int, dhcMins: Int = 0) {
     if (month0 !in 0..11) return
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("FlightLogPrefs", Context.MODE_PRIVATE) }
@@ -70,7 +71,7 @@ fun PayEstimateSection(logs: List<FlightLog>, homeBase: String, year: Int, month
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         HoursProgressCard(usdEstimate, year, month0)
-        UsdPayCard(usdEstimate, month0, groundedDaysInMonth(logs, year, month0))
+        UsdPayCard(usdEstimate, month0, groundedDaysInMonth(logs, year, month0), dhcMins)
         TakaPayCard(takaEstimate, rates.flyingTkPerHour, rates.houseRentPct, rates.specialPct, month0)
     }
 }
@@ -109,7 +110,7 @@ private fun PayNote(text: String) {
 }
 
 @Composable
-private fun UsdPayCard(e: UsdEstimate, month0: Int, groundedDays: Int = 0) {
+private fun UsdPayCard(e: UsdEstimate, month0: Int, groundedDays: Int = 0, dhcMins: Int = 0) {
     val month = MONTH_NAMES[month0]
     val prevMonth = MONTH_NAMES[(month0 + 11) % 12]
     val nextMonth = MONTH_NAMES[(month0 + 1) % 12]
@@ -165,6 +166,9 @@ private fun UsdPayCard(e: UsdEstimate, month0: Int, groundedDays: Int = 0) {
         }
         if (e.incompleteTrips > 0) {
             PayNote("${e.incompleteTrips} trip${if (e.incompleteTrips == 1) "" else "s"} missing departure or return times - not counted in incidental.")
+        }
+        if (dhcMins > 0) {
+            PayNote("DHC ${hm(dhcMins.toLong())} is not counted as flying hours (USD and Taka). Time away on DHC still counts for incidental.")
         }
         if (e.monthEndMissingTimes > 0) {
             PayNote("${e.monthEndMissingTimes} flight${if (e.monthEndMissingTimes == 1) "" else "s"} on the last day of a month ${if (e.monthEndMissingTimes == 1) "has" else "have"} no Block off / Block on. Add them so the hours are split correctly at 00:00 UTC.")
@@ -305,7 +309,7 @@ fun YearAllowanceTable(logs: List<FlightLog>, homeBase: String, year: Int, month
                 Text(d, modifier = Modifier.weight(1.2f), fontSize = 13.sp, fontWeight = w, color = color, textAlign = TextAlign.End)
             }
         }
-        line("Month", "Block", "USD", "Incidental", bold = true, color = Color.Gray)
+        line("Month", "Flying", "USD", "Incidental", bold = true, color = Color.Gray)
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
         rows.forEach { r ->
             val under = r.block < rates.minHours * 60

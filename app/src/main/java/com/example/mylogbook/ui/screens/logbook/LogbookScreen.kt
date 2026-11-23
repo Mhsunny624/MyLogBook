@@ -111,6 +111,15 @@ fun LogbookScreen(
 
     var totalBlockMins = 0; var totalDutyMins = 0
     val monthlyBlockMins = IntArray(12)
+    // Deadhead (DHC) block time: shown in the logbook totals but not paid as flying hours
+    // (incidental and duty hours still count it).
+    var dhcBlockMins = 0
+    val monthlyDhcMins = IntArray(12)
+    fun addBlock(monthIdx: Int, mins: Int, dhc: Boolean) {
+        totalBlockMins += mins
+        monthlyBlockMins[monthIdx] += mins
+        if (dhc) { dhcBlockMins += mins; monthlyDhcMins[monthIdx] += mins }
+    }
     val monthlyDutyMins = IntArray(12)
     var trainingCount = 0; var sickCount = 0
 
@@ -160,10 +169,7 @@ fun LogbookScreen(
                 if (matchDep || matchArr) includeInDisplay = true
 
                 if (calDepTimeBd.get(Calendar.MONTH) == calArrBd.get(Calendar.MONTH) && calDepTimeBd.get(Calendar.YEAR) == calArrBd.get(Calendar.YEAR)) {
-                    if (matchDep) {
-                        totalBlockMins += durMinsBlock
-                        monthlyBlockMins[depMonthIdx] += durMinsBlock
-                    }
+                    if (matchDep) addBlock(depMonthIdx, durMinsBlock, log.dutyType == "DHC")
                 } else {
                     val calNextMonth = calDepTimeBd.clone() as Calendar
                     calNextMonth.add(Calendar.MONTH, 1)
@@ -176,14 +182,8 @@ fun LogbookScreen(
                     val minsInDepMonth = ((calNextMonth.timeInMillis - calDepTimeBd.timeInMillis) / 60000).toInt().coerceIn(0, durMinsBlock)
                     val minsInArrMonth = durMinsBlock - minsInDepMonth
 
-                    if (matchDep) {
-                        totalBlockMins += minsInDepMonth
-                        monthlyBlockMins[depMonthIdx] += minsInDepMonth
-                    }
-                    if (matchArr) {
-                        totalBlockMins += minsInArrMonth
-                        monthlyBlockMins[arrMonthIdx] += minsInArrMonth
-                    }
+                    if (matchDep) addBlock(depMonthIdx, minsInDepMonth, log.dutyType == "DHC")
+                    if (matchArr) addBlock(arrMonthIdx, minsInArrMonth, log.dutyType == "DHC")
                 }
 
                 val durMinsDuty = getMinsFromTimeString(log.totalDuty)
@@ -457,6 +457,14 @@ fun LogbookScreen(
                                 value = String.format("%d hrs %02d mins", totalBlockMins / 60, totalBlockMins % 60)
                             )
                         }
+                        if (dhcBlockMins > 0) {
+                            item {
+                                SingleLineSummaryCard(
+                                    title = "of which DHC (not paid flying)",
+                                    value = String.format("%d hrs %02d mins", dhcBlockMins / 60, dhcBlockMins % 60)
+                                )
+                            }
+                        }
                         item {
                             SingleLineSummaryCard(
                                 title = "Annual Total Duty",
@@ -468,7 +476,8 @@ fun LogbookScreen(
                                 logs = logs,
                                 homeBase = homeBase,
                                 year = selectedYear.toIntOrNull() ?: calendar.get(Calendar.YEAR),
-                                monthlyBlockMins = monthlyBlockMins
+                                // Paid flying hours per month (DHC left out).
+                                monthlyBlockMins = IntArray(12) { monthlyBlockMins[it] - monthlyDhcMins[it] }
                             )
                         }
 
@@ -541,6 +550,14 @@ fun LogbookScreen(
                                 value = String.format("%d hrs %02d mins", totalBlockMins / 60, totalBlockMins % 60)
                             )
                         }
+                        if (dhcBlockMins > 0) {
+                            item {
+                                SingleLineSummaryCard(
+                                    title = "of which DHC (not paid flying)",
+                                    value = String.format("%d hrs %02d mins", dhcBlockMins / 60, dhcBlockMins % 60)
+                                )
+                            }
+                        }
                         item {
                             SingleLineSummaryCard(
                                 title = "Total Duty Hours",
@@ -553,7 +570,8 @@ fun LogbookScreen(
                                 homeBase = homeBase,
                                 year = selectedYear.toIntOrNull() ?: calendar.get(Calendar.YEAR),
                                 month0 = baseMonthsList.indexOf(selectedMonth),
-                                flyMins = totalBlockMins
+                                flyMins = totalBlockMins - dhcBlockMins,
+                                dhcMins = dhcBlockMins
                             )
                         }
                     }
