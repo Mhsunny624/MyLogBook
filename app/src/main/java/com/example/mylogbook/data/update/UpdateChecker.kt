@@ -19,8 +19,20 @@ data class ReleaseInfo(
     val notes: String
 )
 
+/** Outcome of asking GitHub for the latest release. */
+sealed interface CheckResult {
+    data class Found(val release: ReleaseInfo) : CheckResult
+    /** No internet connection (or GitHub could not be reached at all). */
+    data object Offline : CheckResult
+    /** GitHub answered but refused or gave nothing usable (e.g. the 60-per-hour API limit). */
+    data object Busy : CheckResult
+}
+
 object UpdateChecker {
     private const val LATEST_URL = "https://api.github.com/repos/Mhsunny624/MyLogBook/releases/latest"
+    /** The normal release page redirects to /releases/tag/vX.Y.Z and has no API request limit. */
+    private const val LATEST_PAGE = "https://github.com/Mhsunny624/MyLogBook/releases/latest"
+    private const val DOWNLOAD_BASE = "https://github.com/Mhsunny624/MyLogBook/releases/download"
     private const val KEY_LAST_CHECK = "update_last_check"
     private const val CHECK_INTERVAL_MS = 12 * 60 * 60 * 1000L
 
@@ -36,13 +48,51 @@ object UpdateChecker {
     }
 
     /** Latest published release, or null when offline / no release / any error. */
-    suspend fun fetchLatest(): ReleaseInfo? = withContext(Dispatchers.IO) {
+    suspend fun fetchLatest(): ReleaseInfo? = (fetchLatestResult() as? CheckResult.Found)?.release
+
+    /**
+     * Asks the GitHub API first (gives the release notes). If the API refuses, for example because
+     * many phones on mobile data share one address and use up its 60-per-hour limit, reads the
+     * version from the release page redirect instead; the APK link follows the release naming
+     * MyLogBook-vX.Y.Z.apk.
+     */
+    suspend fun fetchLatestResult(): CheckResult = withContext(Dispatchers.IO) {
+        val api = fetchFromApi()
+        if (api != null) return@withContext CheckResult.Found(api)
         try {
+            val conn = (URL(LATEST_PAGE).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8000; readTimeout = 8000
+                instanceFollowRedirects = false
+                setRequestProperty("User-Agent", "MyLogBook-Android")
+            }
+            val location = conn.getHeaderField("Location").orEmpty()
+            conn.disconnect()
+            val tag = location.substringAfter("/releases/tag/", "").substringBefore('?').trim()
+            if (tag.isBlank()) return@withContext CheckResult.Busy
+            val version = tag.removePrefix("v")
+            CheckResult.Found(
+                ReleaseInfo(
+                    version = version,
+                    pageUrl = location,
+                    apkUrl = "$DOWNLOAD_BASE/$tag/MyLogBook-v$version.apk",
+                    notes = ""
+                )
+            )
+        } catch (_: java.io.IOException) {
+            CheckResult.Offline
+        } catch (_: Exception) {
+            CheckResult.Busy
+        }
+    }
+
+    private fun fetchFromApi(): ReleaseInfo? {
+        return try {
             val conn = (URL(LATEST_URL).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 8000; readTimeout = 8000
                 setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("User-Agent", "MyLogBook-Android")
             }
-            if (conn.responseCode != 200) return@withContext null
+            if (conn.responseCode != 200) return null
             val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
             val assets = json.optJSONArray("assets")
             var apk: String? = null

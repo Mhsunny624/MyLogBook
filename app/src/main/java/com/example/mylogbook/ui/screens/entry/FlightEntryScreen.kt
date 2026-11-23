@@ -85,6 +85,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mylogbook.data.FlightLog
 import com.example.mylogbook.data.TRAINING_OPTIONS
+import com.example.mylogbook.domain.duty.BlockField
+import com.example.mylogbook.domain.duty.fillBlockTimes
+import com.example.mylogbook.domain.duty.isBlockDuration
 import com.example.mylogbook.domain.duty.calculateClaimOffForDay
 import com.example.mylogbook.domain.duty.calculateShortRest
 import com.example.mylogbook.domain.duty.calculateTimeDifference
@@ -113,7 +116,11 @@ data class ChainedSector(
     var blockOff: String = "",
     var blockOn: String = "",
     var totalBlock: String = "",
-    var schedDep: String = ""
+    var schedDep: String = "",
+    /** Which of Block off / Block on / Block time the app filled in (form only, not saved). */
+    var autoField: BlockField = BlockField.NONE,
+    /** +1 / -1 when the filled-in time is on the next / previous UTC day. */
+    var autoDayShift: Int = 0
 )
 
 @SuppressLint("DefaultLocale")
@@ -224,6 +231,8 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                     blockOff = log.blockOff.filter { it.isDigit() },
                     blockOn = log.blockOn.filter { it.isDigit() },
                     totalBlock = log.totalBlock.filter { it.isDigit() },
+                    // With both times saved, the block time was worked out from them: keep it updating.
+                    autoField = if (isClockTime(log.blockOff) && isClockTime(log.blockOn)) BlockField.BLOCK else BlockField.NONE,
                     schedDep = log.schedDep.filter { it.isDigit() }
                 ))
             }
@@ -248,9 +257,14 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
         if (calculated != null) totalDutyTime = calculated
     }
 
-    fun updateAutoBlockTime(off: String, on: String, index: Int) {
-        val calculated = calculateTimeDifference(off, on)
-        if (calculated != null) sectors[index] = sectors[index].copy(totalBlock = calculated)
+    // Any two of Block off / Block on / Block time fill in the third (domain/duty/BlockFill.kt).
+    fun editBlock(index: Int, field: BlockField, value: String) {
+        val s = sectors[index]
+        val off = if (field == BlockField.OFF) value else s.blockOff
+        val on = if (field == BlockField.ON) value else s.blockOn
+        val blk = if (field == BlockField.BLOCK) value else s.totalBlock
+        val r = fillBlockTimes(off, on, blk, s.autoField, field)
+        sectors[index] = s.copy(blockOff = r.off, blockOn = r.on, totalBlock = r.block, autoField = r.auto, autoDayShift = r.dayShift)
     }
 
     // Date pickers open on the date already in the field (today when empty).
@@ -563,27 +577,31 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                                                     // Scheduled departure of the first sector: used to calculate Duty On.
                                                     CompactTimeField("Sched Dep", sector.schedDep, { c -> sectors[index] = sector.copy(schedDep = c) }, Modifier.weight(1.25f)) { focusManager.moveFocus(FocusDirection.Next) }
                                                 }
-                                                CompactTimeField("Block off", sector.blockOff, { c ->
-                                                    sectors[index] = sector.copy(blockOff = c)
-                                                    updateAutoBlockTime(c, sector.blockOn, index)
+                                                CompactTimeField(if (sector.autoField == BlockField.OFF) "Block off (auto)" else "Block off", sector.blockOff, { c ->
+                                                    editBlock(index, BlockField.OFF, c)
                                                 }, Modifier.weight(1f)) { focusManager.moveFocus(FocusDirection.Next) }
-                                                CompactTimeField("Block on", sector.blockOn, { c ->
-                                                    sectors[index] = sector.copy(blockOn = c)
-                                                    updateAutoBlockTime(sector.blockOff, c, index)
+                                                CompactTimeField(if (sector.autoField == BlockField.ON) "Block on (auto)" else "Block on", sector.blockOn, { c ->
+                                                    editBlock(index, BlockField.ON, c)
                                                 }, Modifier.weight(1f)) { focusManager.moveFocus(FocusDirection.Next) }
                                             }
-                                            if (blockFromTimes) {
-                                                // Right-aligned, so it sits under the Block on box.
-                                                Text(
-                                                    "Block time ${formatWithColon(sector.totalBlock)}",
-                                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.align(Alignment.End).padding(end = 4.dp)
-                                                )
-                                            } else {
-                                                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                                    Text("No block off/on? Enter block time", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.weight(1f))
-                                                    CompactTimeField("Block time", sector.totalBlock, { c -> sectors[index] = sector.copy(totalBlock = c) }, Modifier.width(110.dp))
+                                            // Block time is always editable: any two of the three fill in the third.
+                                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                                val hint = when {
+                                                    sector.autoField == BlockField.ON && sector.autoDayShift > 0 -> "Block on filled in: next day (UTC)"
+                                                    sector.autoField == BlockField.OFF && sector.autoDayShift < 0 -> "Block off filled in: day before (UTC). The date should be the block-off date."
+                                                    sector.autoField == BlockField.ON -> "Block on filled in from block time"
+                                                    sector.autoField == BlockField.OFF -> "Block off filled in from block time"
+                                                    blockFromTimes -> ""
+                                                    else -> "Enter any two: block off, block on, block time"
                                                 }
+                                                Text(
+                                                    hint, fontSize = 12.sp, lineHeight = 15.sp,
+                                                    color = if (sector.autoDayShift < 0) MaterialTheme.colorScheme.error else Color.Gray,
+                                                    modifier = Modifier.weight(1f).padding(end = 6.dp)
+                                                )
+                                                CompactTimeField(if (sector.autoField == BlockField.BLOCK) "Block time (auto)" else "Block time", sector.totalBlock, { c ->
+                                                    editBlock(index, BlockField.BLOCK, c)
+                                                }, Modifier.width(130.dp))
                                             }
                                         }
                                     }
@@ -835,6 +853,9 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                 val block = getMinsFromTimeString(sec.totalBlock)
                 if (block > 18 * 60) w += "${n}block time ${formatWithColon(normalizeTimeStr(sec.totalBlock))} is over 18 hours."
                 if (isClockTime(sec.blockOff) && sec.blockOff == sec.blockOn) w += "${n}block off and block on are the same time."
+                val fromTimes = calculateTimeDifference(sec.blockOff, sec.blockOn)
+                if (fromTimes != null && isBlockDuration(sec.totalBlock) && normalizeTimeStr(sec.totalBlock) != fromTimes)
+                    w += "${n}block time ${formatWithColon(sec.totalBlock)} doesn't match block off → block on (${formatWithColon(fromTimes)})."
                 val dup = savedLogs.any {
                     it.id !in editingIds && it.recordType == "Flight" && it.flightDate == flightDate &&
                         it.flightNo == sec.flightNo && it.departure == sec.departure && it.arrival == sec.arrival

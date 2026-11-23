@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mylogbook.BuildConfig
+import com.example.mylogbook.data.update.CheckResult
 import com.example.mylogbook.data.update.ReleaseInfo
 import com.example.mylogbook.data.update.UpdateChecker
 import com.example.mylogbook.data.update.UpdateInstaller
@@ -57,11 +58,12 @@ class UpdateFlow(private val context: Context, private val scope: CoroutineScope
     fun check() {
         state = UpdateState.Checking
         scope.launch {
-            val latest = UpdateChecker.fetchLatest()
-            state = when {
-                latest == null -> UpdateState.Failed("Couldn't reach GitHub. Check your internet connection.")
-                UpdateChecker.isNewer(latest.version, BuildConfig.VERSION_NAME) -> UpdateState.Available(latest)
-                else -> UpdateState.UpToDate
+            state = when (val result = UpdateChecker.fetchLatestResult()) {
+                CheckResult.Offline -> UpdateState.Failed("No internet connection. Connect and try again.")
+                CheckResult.Busy -> UpdateState.Failed("GitHub is busy right now. Try again in a little while.")
+                is CheckResult.Found ->
+                    if (UpdateChecker.isNewer(result.release.version, BuildConfig.VERSION_NAME)) UpdateState.Available(result.release)
+                    else UpdateState.UpToDate
             }
         }
     }
