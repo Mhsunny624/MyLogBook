@@ -218,8 +218,10 @@ private fun TakaPayCard(t: TakaEstimate, tkPerHour: Double, hrPct: Double, speci
  */
 @Composable
 private fun HoursProgressCard(e: UsdEstimate, year: Int, month0: Int) {
-    val targetMins = (e.minHours - e.waiverHours).coerceAtLeast(0) * 60
     val flown = e.flyMins
+    // Once the full minimum is flown the long-stay waiver no longer matters: show the real target.
+    val waiverUsed = e.waiverHours > 0 && flown < e.minHours * 60
+    val targetMins = (e.minHours - if (waiverUsed) e.waiverHours else 0).coerceAtLeast(0) * 60
     val reached = flown >= targetMins
     val now = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
     val isCurrentMonth = now.get(java.util.Calendar.YEAR) == year && now.get(java.util.Calendar.MONTH) == month0
@@ -261,7 +263,7 @@ private fun HoursProgressCard(e: UsdEstimate, year: Int, month0: Int) {
             },
             fontWeight = FontWeight.SemiBold
         )
-        if (e.waiverHours > 0) {
+        if (waiverUsed) {
             PayNote("Target lowered from ${e.minHours} hrs by the ${e.waiverHours} hrs long-stay waiver.")
         }
     }

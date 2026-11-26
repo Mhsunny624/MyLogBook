@@ -58,7 +58,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SecondaryScrollableTabRow
+import androidx.compose.material3.SecondaryTabRow
+import androidx.activity.compose.BackHandler
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -126,7 +127,7 @@ data class ChainedSector(
 @SuppressLint("DefaultLocale")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
+fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel, onClose: () -> Unit = {}) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val savedLogs by vm.allLogs.collectAsState()
@@ -189,6 +190,15 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
     var trainingTypeExpanded by remember { mutableStateOf(false) }
     var regExpanded by remember { mutableStateOf(false) }
 
+    // Snapshot of everything the user can type, to tell whether Back would lose changes.
+    fun formSignature(): String = listOf(
+        trainingType, expiryDate, endDate, healthMode, docType, groundReason, logbookNumber, aircraftReg,
+        dutyType, flightDate, dutyOnTime, dutyOffTime, totalDutyTime, crewNames, notes,
+        sectors.joinToString("|") { "${it.flightNo},${it.departure},${it.arrival},${it.blockOff},${it.blockOn},${it.totalBlock},${it.schedDep}" }
+    ).joinToString("¦")
+    var baseline by remember { mutableStateOf<String?>(null) }
+    var confirmDiscard by remember { mutableStateOf(false) }
+
     LaunchedEffect(vm.logsBeingEdited) {
         val editingLogs = vm.logsBeingEdited
         if (!editingLogs.isNullOrEmpty()) {
@@ -250,6 +260,19 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
             trainingType = ""; expiryDate = ""; endDate = ""; dutyType = "Operating"; docType = "Passport"
         }
         dateError = false
+        baseline = formSignature()
+    }
+
+    // Back with unsaved changes asks first instead of throwing the entry away.
+    BackHandler(enabled = baseline != null && formSignature() != baseline) { confirmDiscard = true }
+    if (confirmDiscard) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscard = false },
+            title = { Text(if (vm.logsBeingEdited != null) "Discard changes?" else "Discard this entry?") },
+            text = { Text("What you typed will not be saved.") },
+            confirmButton = { TextButton(onClick = { confirmDiscard = false; onClose() }) { Text("Discard") } },
+            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Keep editing") } }
+        )
     }
 
     fun updateAutoDutyTime(on: String, off: String) {
@@ -302,9 +325,9 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
             modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp, bottom = 8.dp)
         )
 
-        SecondaryScrollableTabRow(
+        // Fixed tabs so all five (including Documents) are always visible.
+        SecondaryTabRow(
             selectedTabIndex = actualCurrentPage,
-            edgePadding = 0.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
             tabs.forEachIndexed { index, title ->
@@ -323,7 +346,12 @@ fun FlightEntryScreen(onSaveSuccess: (String) -> Unit, vm: FlightLogViewModel) {
                         else if (pageDiff < -(tabs.size / 2)) pageDiff += tabs.size
                         coroutineScope.launch { pagerState.animateScrollToPage(pagerState.currentPage + pageDiff) }
                     },
-                    text = { Text(if (title == "Document") "Documents" else title) },
+                    text = {
+                        Text(
+                            when (title) { "Document" -> "Documents"; "Health Card" -> "Health"; else -> title },
+                            fontSize = 11.sp, maxLines = 1, softWrap = false
+                        )
+                    },
                     icon = { Icon(icon, contentDescription = title) }
                 )
             }

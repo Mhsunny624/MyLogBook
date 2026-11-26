@@ -113,6 +113,7 @@ fun LogbookScreen(
     val monthlyBlockMins = IntArray(12)
     // Deadhead (DHC) block time: shown in the logbook totals but not paid as flying hours
     // (incidental and duty hours still count it).
+    var trainingDutyMins = 0   // training days count as duty; shown separately under the duty total
     var dhcBlockMins = 0
     val monthlyDhcMins = IntArray(12)
     fun addBlock(monthIdx: Int, mins: Int, dhc: Boolean) {
@@ -245,6 +246,7 @@ fun LogbookScreen(
                         if (log.totalDuty.isNotBlank()) {
                             val dutyVal = getMinsFromTimeString(log.totalDuty)
                             totalDutyMins += dutyVal
+                            trainingDutyMins += dutyVal
                             monthlyDutyMins[depMonthIdx] += dutyVal
                         }
                     }
@@ -471,6 +473,14 @@ fun LogbookScreen(
                                 value = String.format("%d hrs %02d mins", totalDutyMins / 60, totalDutyMins % 60)
                             )
                         }
+                        if (trainingDutyMins > 0) {
+                            item {
+                                SingleLineSummaryCard(
+                                    title = "of which training",
+                                    value = String.format("%d hrs %02d mins", trainingDutyMins / 60, trainingDutyMins % 60)
+                                )
+                            }
+                        }
                         item {
                             YearAllowanceTable(
                                 logs = logs,
@@ -563,6 +573,14 @@ fun LogbookScreen(
                                 title = "Total Duty Hours",
                                 value = String.format("%d hrs %02d mins", totalDutyMins / 60, totalDutyMins % 60)
                             )
+                        }
+                        if (trainingDutyMins > 0) {
+                            item {
+                                SingleLineSummaryCard(
+                                    title = "of which training",
+                                    value = String.format("%d hrs %02d mins", trainingDutyMins / 60, trainingDutyMins % 60)
+                                )
+                            }
                         }
                         item {
                             PayEstimateSection(

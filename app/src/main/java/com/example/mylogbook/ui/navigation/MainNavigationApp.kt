@@ -191,7 +191,11 @@ fun MainNavigationApp(
                             val targetPage = if (savedRecordType in listOf("Training", "Health Card", "Document")) 1 else 0
                             coroutineScope.launch { pagerState.animateScrollToPage(targetPage) }
                         },
-                        vm = vm
+                        vm = vm,
+                        onClose = {
+                            isAddOverlayVisible = false
+                            vm.logsBeingEdited = null
+                        }
                     )
                 }
             }
